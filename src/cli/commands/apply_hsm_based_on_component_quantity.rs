@@ -1,5 +1,6 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, time::Instant, sync::Arc};
 use serde_json::json;
+use tokio::sync::Semaphore;
 
 use crate::{
     cli::commands::apply_hsm_based_on_component_quantity::utils::{
@@ -128,7 +129,8 @@ pub async fn exec(
 
     let mut tasks = tokio::task::JoinSet::new();
 
-    let max_concurrent = 5;
+    let sem = Arc::new(Semaphore::new(5)); // CSM 1.3.1 higher number of concurrent tasks won't
+                                           // make it faster
     
     // Get HW inventory details for target HSM group
     for hsm_member in hsm_group_target_members.clone() {
@@ -139,15 +141,12 @@ pub async fn exec(
             .cloned()
             .collect::<Vec<_>>()
             .clone();
-
-        // Freeze tasks until one is released, this is to make sure no more than max_concurrent
-        // tasks are running at the same time to avoid CSM server starvation. ref https://users.rust-lang.org/t/limited-concurrency-for-future-execution-tokio/87171/4 
-        while tasks.len() >= max_concurrent {
-            tasks.join_next().await.unwrap().unwrap();
-        }
+        
+        let permit = Arc::clone(&sem).acquire_owned().await;
 
         // println!("user_defined_hw_profile_vec_aux: {:?}", user_defined_hw_profile_vec_aux);
         tasks.spawn(async move {
+            let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
             hsm_node_hw_profile(
                 shasta_token_string,
                 shasta_base_url_string,

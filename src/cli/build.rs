@@ -91,4 +91,5 @@ pub fn build_cli(hsm_group: Option<&String>) -> Command {
                 .subcommand(subcommand_update_nodes(hsm_group))
                 .subcommand(subcommand_update_hsm_group(hsm_group)),
         ) */
+        // .subcommand(Command::new("delete").alias("d").arg_required_else_help(true).about("Delete HSM group").arg(arg!(<HSM_GROUP_NAME> "HSM group name to delete")))
 }
