@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
 use mesa::shasta::hsm;
-use serde_json::Value;
 use tokio::sync::Semaphore;
 
 use crate::cli::commands::get_nodes_artifacts::{self, NodeSummary};

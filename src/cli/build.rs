@@ -1,8 +1,6 @@
-use clap::{arg, value_parser, ArgAction, ArgGroup, Command};
+use clap::{arg, Command};
 
 use strum::IntoEnumIterator;
-
-use std::path::PathBuf;
 
 use super::commands::get_nodes_artifacts;
 

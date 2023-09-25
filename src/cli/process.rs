@@ -1,11 +1,7 @@
-use std::io::IsTerminal;
-
 use clap::ArgMatches;
-use k8s_openapi::chrono;
 
 use super::commands::{
     apply_hsm_based_on_component_quantity, get_hsm_artifacts, get_nodes_artifacts,
-    update_hsm_group, update_node,
 };
 
 pub async fn process_cli(
@@ -69,42 +65,42 @@ pub async fn process_cli(
             .await;
         }
     } /* else if let Some(cli_update) = cli_apply.subcommand_matches("update") {
-        if let Some(cli_update_node) = cli_update.subcommand_matches("nodes") {
-            let hsm_group_name = if hsm_group.is_none() {
-                cli_update_node.get_one::<String>("HSM_GROUP_NAME")
-            } else {
-                hsm_group
-            };
-            update_node::exec(
-                shasta_token,
-                shasta_base_url,
-                hsm_group_name,
-                cli_update_node.get_one::<String>("boot-image"),
-                cli_update_node.get_one::<String>("desired-configuration"),
-                cli_update_node
-                    .get_one::<String>("XNAMES")
-                    .unwrap()
-                    .split(',')
-                    .map(|xname| xname.trim())
-                    .collect(),
-            )
-            .await;
-        } else if let Some(cli_update_hsm_group) = cli_update.subcommand_matches("hsm-group") {
-            let hsm_group_name = if hsm_group.is_none() {
-                cli_update_hsm_group.get_one::<String>("HSM_GROUP_NAME")
-            } else {
-                hsm_group
-            };
-            update_hsm_group::exec(
-                shasta_token,
-                shasta_base_url,
-                cli_update_hsm_group.get_one::<String>("boot-image"),
-                cli_update_hsm_group.get_one::<String>("desired-configuration"),
-                hsm_group_name.unwrap(),
-            )
-            .await;
-        }
-    } */
+          if let Some(cli_update_node) = cli_update.subcommand_matches("nodes") {
+              let hsm_group_name = if hsm_group.is_none() {
+                  cli_update_node.get_one::<String>("HSM_GROUP_NAME")
+              } else {
+                  hsm_group
+              };
+              update_node::exec(
+                  shasta_token,
+                  shasta_base_url,
+                  hsm_group_name,
+                  cli_update_node.get_one::<String>("boot-image"),
+                  cli_update_node.get_one::<String>("desired-configuration"),
+                  cli_update_node
+                      .get_one::<String>("XNAMES")
+                      .unwrap()
+                      .split(',')
+                      .map(|xname| xname.trim())
+                      .collect(),
+              )
+              .await;
+          } else if let Some(cli_update_hsm_group) = cli_update.subcommand_matches("hsm-group") {
+              let hsm_group_name = if hsm_group.is_none() {
+                  cli_update_hsm_group.get_one::<String>("HSM_GROUP_NAME")
+              } else {
+                  hsm_group
+              };
+              update_hsm_group::exec(
+                  shasta_token,
+                  shasta_base_url,
+                  cli_update_hsm_group.get_one::<String>("boot-image"),
+                  cli_update_hsm_group.get_one::<String>("desired-configuration"),
+                  hsm_group_name.unwrap(),
+              )
+              .await;
+          }
+      } */
 
     Ok(())
 }
