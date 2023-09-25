@@ -1,4 +1,6 @@
-use std::{collections::HashMap, time::Instant};
+use std::{collections::HashMap, time::Instant, sync::Arc};
+
+use tokio::sync::Semaphore;
 
 use crate::{
     cli::commands::apply_hsm_based_on_node_quantity::utils::hsm_node_hw_profile,
@@ -329,12 +331,19 @@ pub async fn exec(
 
     let mut tasks = tokio::task::JoinSet::new();
 
+    let sem = Arc::new(Semaphore::new(5)); // CSM 1.3.1 higher number of concurrent tasks won't
+                                           // make it faster
+
     for hsm_member in hsm_group_parent_members {
         let shasta_token_string = shasta_token.to_string();
         let shasta_base_url_string = shasta_base_url.to_string();
         let user_defined_hw_profile_vec_aux =
             user_defined_hw_properties_grouped_by_hw_profile_vec_sorted.clone();
+        
+        let permit = Arc::clone(&sem).acquire_owned().await;
+
         tasks.spawn(async move {
+            let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
             hsm_node_hw_profile(
                 shasta_token_string,
                 shasta_base_url_string,

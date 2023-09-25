@@ -26,15 +26,12 @@ pub async fn exec(
     let mut tasks = tokio::task::JoinSet::new();
 
     for sub_node_list in hsm_groups_node_list.chunks(chunk_size) {
-
         let shasta_token_string = shasta_token.to_string();
         let shasta_base_url_string = shasta_base_url.to_string();
-        
+
         let hsm_subgroup_nodes_string: String = sub_node_list.join(",");
 
         tasks.spawn(async move {
-
-
             shasta::cfs::component::http_client::get_multiple_components(
                 &shasta_token_string,
                 &shasta_base_url_string,

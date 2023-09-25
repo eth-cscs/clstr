@@ -1,4 +1,5 @@
 use std::{collections::HashMap, time::Instant};
+use serde_json::json;
 
 use crate::{
     cli::commands::apply_hsm_based_on_component_quantity::utils::{
@@ -103,10 +104,20 @@ pub async fn exec(
     // *********************************************************************************************************
     // TARGET HSM GROUP
     // Get target HSM group details
-    let hsm_group_target_value =
+    let hsm_group_target_value_rslt =
         hsm::http_client::get_hsm_group(shasta_token, shasta_base_url, target_hsm_group_name)
-            .await
-            .unwrap();
+            .await;
+
+    let hsm_group_target_value = match hsm_group_target_value_rslt {
+        Err(_) => json!({
+            "label": target_hsm_group_name,
+            "description": "",
+            "members": {
+                "ids": []
+            }
+        }),
+        Ok(hsm_group_target_value) => hsm_group_target_value
+    };
 
     // Get target HSM group members
     let hsm_group_target_members =
@@ -117,15 +128,24 @@ pub async fn exec(
 
     let mut tasks = tokio::task::JoinSet::new();
 
+    let max_concurrent = 5;
+    
     // Get HW inventory details for target HSM group
     for hsm_member in hsm_group_target_members.clone() {
-        let shasta_token_string = shasta_token.to_string();
-        let shasta_base_url_string = shasta_base_url.to_string();
+        let shasta_token_string = shasta_token.to_string(); // TODO: make it static
+        let shasta_base_url_string = shasta_base_url.to_string(); // TODO: make it static
         let user_defined_hw_component_vec = user_defined_hw_component_counter_hashmap
             .keys()
             .cloned()
             .collect::<Vec<_>>()
             .clone();
+
+        // Freeze tasks until one is released, this is to make sure no more than max_concurrent
+        // tasks are running at the same time to avoid CSM server starvation. ref https://users.rust-lang.org/t/limited-concurrency-for-future-execution-tokio/87171/4 
+        while tasks.len() >= max_concurrent {
+            tasks.join_next().await.unwrap().unwrap();
+        }
+
         // println!("user_defined_hw_profile_vec_aux: {:?}", user_defined_hw_profile_vec_aux);
         tasks.spawn(async move {
             hsm_node_hw_profile(
@@ -155,7 +175,7 @@ pub async fn exec(
     }
 
     let duration = start.elapsed();
-    println!(
+    log::info!(
         "Time elapsed to calculate actual_hsm_node_hw_profile_vec in '{}' is: {:?}",
         target_hsm_group_name, duration
     );
@@ -237,7 +257,7 @@ pub async fn exec(
     }
 
     let duration = start.elapsed();
-    println!(
+    log::info!(
         "Time elapsed to calculate actual_hsm_node_hw_profile_vec in '{}' is: {:?}",
         parent_hsm_group_name, duration
     );
@@ -409,6 +429,10 @@ pub mod utils {
         mut target_hsm_normalize_score_vec: Vec<(String, isize)>,
         mut hw_components_to_migrate_from_target_hsm_to_parent_hsm: HashMap<String, isize>,
     ) -> Vec<String> {
+        if target_hsm_score_vec.is_empty() {
+            log::info!("No candidates to choose from");
+            return Vec::new();
+        }
         let mut nodes_migrated_from_target_hsm: Vec<String> = Vec::new();
 
         let (mut best_candidate, mut best_candidate_counters) = get_best_candidate_to_migrate(
