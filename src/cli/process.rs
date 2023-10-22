@@ -8,6 +8,7 @@ pub async fn process_cli(
     cli_apply: ArgMatches,
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     vault_base_url: &str,
     vault_secret_path: &str,
     vault_role_id: &str,
@@ -28,6 +29,7 @@ pub async fn process_cli(
                 get_nodes_artifacts::exec(
                     shasta_token,
                     shasta_base_url,
+                    shasta_root_cert,
                     hsm_group_name,
                     cli_get_node_artifacts.get_one::<String>("XNAME").unwrap(),
                     cli_get_node_artifacts.get_one::<String>("type"),
@@ -48,6 +50,7 @@ pub async fn process_cli(
                 get_hsm_artifacts::exec(
                     shasta_token,
                     shasta_base_url,
+                    shasta_root_cert,
                     hsm_group_name,
                     cli_get_hsm_groups_artifacts.get_one::<String>("output"),
                 )
@@ -59,6 +62,7 @@ pub async fn process_cli(
             apply_hsm_based_on_component_quantity::exec(
                 shasta_token,
                 shasta_base_url,
+                shasta_root_cert,
                 cli_apply_hsm.get_one::<String>("pattern").unwrap(),
                 "nodes_free",
             )

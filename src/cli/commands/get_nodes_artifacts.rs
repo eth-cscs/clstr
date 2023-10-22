@@ -139,13 +139,19 @@ impl ArtifactSummary {
 pub async fn exec(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     hsm_group_name: Option<&String>,
     xname: &str,
     type_artifact_opt: Option<&String>,
     output_opt: Option<&String>,
 ) {
-    let hsm_groups_resp =
-        hsm::http_client::get_hsm_groups(shasta_token, shasta_base_url, hsm_group_name).await;
+    let hsm_groups_resp = hsm::http_client::get_hsm_groups(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        hsm_group_name,
+    )
+    .await;
 
     let hsm_group_list = if hsm_groups_resp.is_err() {
         eprintln!(
@@ -172,10 +178,14 @@ pub async fn exec(
 
     hsm_groups_node_list.sort();
 
-    let mut node_hw_inventory =
-        &hsm::http_client::get_hw_inventory(&shasta_token, &shasta_base_url, xname)
-            .await
-            .unwrap();
+    let mut node_hw_inventory = &hsm::http_client::get_hw_inventory(
+        &shasta_token.to_string(),
+        &shasta_base_url.to_string(),
+        &shasta_root_cert.to_vec(),
+        xname,
+    )
+    .await
+    .unwrap();
 
     node_hw_inventory = &node_hw_inventory.pointer("/Nodes/0").unwrap();
 

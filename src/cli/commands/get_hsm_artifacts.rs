@@ -8,14 +8,19 @@ use crate::cli::commands::get_nodes_artifacts::{self, NodeSummary};
 pub async fn exec(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     hsm_group_name: &str,
     output_opt: Option<&String>,
 ) {
     // Target HSM group
-    let hsm_group_value =
-        hsm::http_client::get_hsm_group(shasta_token, shasta_base_url, hsm_group_name)
-            .await
-            .unwrap();
+    let hsm_group_value = hsm::http_client::get_hsm_group(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        hsm_group_name,
+    )
+    .await
+    .unwrap();
 
     log::info!(
         "Get HW artifacts for nodes in HSM group '{:?}' and members {:?}",
@@ -54,6 +59,7 @@ pub async fn exec(
     for hsm_member in hsm_group_target_members.clone() {
         let shasta_token_string = shasta_token.to_string(); // TODO: make it static
         let shasta_base_url_string = shasta_base_url.to_string(); // TODO: make it static
+        let shasta_root_cert_vec = shasta_root_cert.to_vec();
         let hsm_member_string = hsm_member.to_string(); // TODO: make it static
                                                         //
         let permit = Arc::clone(&sem).acquire_owned().await;
@@ -64,6 +70,7 @@ pub async fn exec(
             hsm::http_client::get_hw_inventory(
                 &shasta_token_string,
                 &shasta_base_url_string,
+                &shasta_root_cert_vec,
                 &hsm_member_string,
             )
             .await
@@ -92,7 +99,7 @@ pub async fn exec(
             get_nodes_artifacts::print_table(&vec![node_summary].to_vec());
         }
     }
-    
+
     log::info!(
         "Time elapsed in http calls to get hw inventory for HSM '{}' is: {:?}",
         hsm_group_name,

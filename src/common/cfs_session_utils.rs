@@ -1,6 +1,6 @@
 use comfy_table::Table;
 use mesa::shasta;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -53,10 +53,10 @@ pub struct Artifact {
 pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub job: Option<String>,
-    #[serde(rename = "completionTime")]    
+    #[serde(rename = "completionTime")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completion_time: Option<String>,
-    #[serde(rename = "startTime")]    
+    #[serde(rename = "startTime")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_time: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -218,12 +218,14 @@ pub fn print_table(get_cfs_session_value_list: &Vec<Value>) {
 pub async fn get_image_id_related_to_cfs_configuration(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     cfs_configuration_name: &String,
 ) -> Option<String> {
     // Get all CFS sessions which has succeeded
     let cfs_sessions_value_list = mesa::shasta::cfs::session::http_client::get(
         shasta_token,
         shasta_base_url,
+        shasta_root_cert,
         None,
         None,
         None,
@@ -235,6 +237,7 @@ pub async fn get_image_id_related_to_cfs_configuration(
     get_image_id_from_cfs_session_list(
         shasta_token,
         shasta_base_url,
+        shasta_root_cert,
         cfs_configuration_name,
         &cfs_sessions_value_list,
     )
@@ -244,6 +247,7 @@ pub async fn get_image_id_related_to_cfs_configuration(
 pub async fn get_image_id_from_cfs_session_list(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     cfs_configuration_name: &String,
     cfs_sessions_value_list: &Vec<Value>,
 ) -> Option<String> {
@@ -291,9 +295,16 @@ pub async fn get_image_id_from_cfs_session_list(
         );
 
         // Get IMS image related to the CFS session
-        if mesa::shasta::ims::image::http_client::get(shasta_token, shasta_base_url, image_id)
-            .await
-            .is_ok()
+        if mesa::shasta::ims::image::http_client::get(
+            shasta_token,
+            shasta_base_url,
+            shasta_root_cert,
+            None,
+            image_id,
+            None,
+        )
+        .await
+        .is_ok()
         {
             log::info!(
                 "Image ID found related to CFS sesison {} is {}",
@@ -311,12 +322,19 @@ pub async fn get_image_id_from_cfs_session_list(
 pub async fn transform(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     cfs_sessions_value_list: Vec<Value>,
 ) -> Vec<Vec<String>> {
-    let bos_sessiontemplate_list =
-        shasta::bos::template::http_client::get(shasta_token, shasta_base_url, None, None, None)
-            .await
-            .unwrap();
+    let bos_sessiontemplate_list = shasta::bos::template::http_client::get(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
     let mut cfs_session_table_data_list = Vec::new();
 

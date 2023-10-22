@@ -1,5 +1,5 @@
-use std::{collections::HashMap, time::Instant, sync::Arc};
 use serde_json::json;
+use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -54,6 +54,7 @@ use crate::{
 pub async fn exec(
     shasta_token: &str,
     shasta_base_url: &str,
+    shasta_root_cert: &[u8],
     pattern: &str,
     parent_hsm_group_name: &str,
 ) {
@@ -105,9 +106,13 @@ pub async fn exec(
     // *********************************************************************************************************
     // TARGET HSM GROUP
     // Get target HSM group details
-    let hsm_group_target_value_rslt =
-        hsm::http_client::get_hsm_group(shasta_token, shasta_base_url, target_hsm_group_name)
-            .await;
+    let hsm_group_target_value_rslt = hsm::http_client::get_hsm_group(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        target_hsm_group_name,
+    )
+    .await;
 
     let hsm_group_target_value = match hsm_group_target_value_rslt {
         Err(_) => json!({
@@ -117,7 +122,7 @@ pub async fn exec(
                 "ids": []
             }
         }),
-        Ok(hsm_group_target_value) => hsm_group_target_value
+        Ok(hsm_group_target_value) => hsm_group_target_value,
     };
 
     // Get target HSM group members
@@ -131,17 +136,18 @@ pub async fn exec(
 
     let sem = Arc::new(Semaphore::new(5)); // CSM 1.3.1 higher number of concurrent tasks won't
                                            // make it faster
-    
+
     // Get HW inventory details for target HSM group
     for hsm_member in hsm_group_target_members.clone() {
         let shasta_token_string = shasta_token.to_string(); // TODO: make it static
         let shasta_base_url_string = shasta_base_url.to_string(); // TODO: make it static
+        let shasta_root_cert_vec = shasta_root_cert.to_vec();
         let user_defined_hw_component_vec = user_defined_hw_component_counter_hashmap
             .keys()
             .cloned()
             .collect::<Vec<_>>()
             .clone();
-        
+
         let permit = Arc::clone(&sem).acquire_owned().await;
 
         // println!("user_defined_hw_profile_vec_aux: {:?}", user_defined_hw_profile_vec_aux);
@@ -150,6 +156,7 @@ pub async fn exec(
             hsm_node_hw_profile(
                 shasta_token_string,
                 shasta_base_url_string,
+                shasta_root_cert_vec,
                 &hsm_member,
                 user_defined_hw_component_vec,
             )
@@ -176,7 +183,8 @@ pub async fn exec(
     let duration = start.elapsed();
     log::info!(
         "Time elapsed to calculate actual_hsm_node_hw_profile_vec in '{}' is: {:?}",
-        target_hsm_group_name, duration
+        target_hsm_group_name,
+        duration
     );
 
     // Sort nodes hw counters by node name
@@ -204,10 +212,14 @@ pub async fn exec(
     // PARENT HSM GROUP
     // Get parent HSM group details
     let mut parent_hsm_group_hw_component_vec = Vec::new();
-    let hsm_group_parent_value =
-        hsm::http_client::get_hsm_group(shasta_token, shasta_base_url, parent_hsm_group_name)
-            .await
-            .unwrap();
+    let hsm_group_parent_value = hsm::http_client::get_hsm_group(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        parent_hsm_group_name,
+    )
+    .await
+    .unwrap();
 
     // Get target HSM group members
     let hsm_group_parent_members =
@@ -222,6 +234,7 @@ pub async fn exec(
     for hsm_member in hsm_group_parent_members.clone() {
         let shasta_token_string = shasta_token.to_string();
         let shasta_base_url_string = shasta_base_url.to_string();
+        let shasta_root_cert_vec = shasta_root_cert.to_vec();
         let user_defined_hw_component_vec = user_defined_hw_component_counter_hashmap
             .keys()
             .cloned()
@@ -232,6 +245,7 @@ pub async fn exec(
             hsm_node_hw_profile(
                 shasta_token_string,
                 shasta_base_url_string,
+                shasta_root_cert_vec,
                 &hsm_member,
                 user_defined_hw_component_vec,
             )
@@ -258,7 +272,8 @@ pub async fn exec(
     let duration = start.elapsed();
     log::info!(
         "Time elapsed to calculate actual_hsm_node_hw_profile_vec in '{}' is: {:?}",
-        parent_hsm_group_name, duration
+        parent_hsm_group_name,
+        duration
     );
 
     // Sort nodes hw counters by node name
@@ -739,13 +754,18 @@ pub mod utils {
     pub async fn hsm_node_hw_profile(
         shasta_token: String,
         shasta_base_url: String,
+        shasta_root_cert: Vec<u8>,
         hsm_member: &str,
         user_defined_hw_profile_vec: Vec<String>,
     ) -> (String, Vec<String>) {
-        let profile =
-            hsm::http_client::get_hw_inventory(&shasta_token, &shasta_base_url, hsm_member)
-                .await
-                .unwrap();
+        let profile = hsm::http_client::get_hw_inventory(
+            &shasta_token,
+            &shasta_base_url,
+            &shasta_root_cert,
+            hsm_member,
+        )
+        .await
+        .unwrap();
         let actual_xname_hw_profile_set =
             get_node_hw_properties(&profile, user_defined_hw_profile_vec.clone());
 
