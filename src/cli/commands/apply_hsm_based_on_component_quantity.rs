@@ -105,6 +105,7 @@ pub async fn exec(
 
     // *********************************************************************************************************
     // TARGET HSM GROUP
+
     // Get target HSM group details
     let hsm_group_target_value_rslt = hsm::http_client::get_hsm_group(
         shasta_token,
@@ -191,6 +192,7 @@ pub async fn exec(
     target_hsm_group_hw_component_vec
         .sort_by_key(|target_hsm_group_hw_component| target_hsm_group_hw_component.0.clone());
 
+    // Calculate HSM group hw component counters
     let target_hsm_hw_component_count_hashmap = get_hsm_hw_component_count(
         &user_defined_hw_component_vec,
         &target_hsm_group_hw_component_vec,
@@ -280,6 +282,7 @@ pub async fn exec(
     parent_hsm_group_hw_component_vec
         .sort_by_key(|target_hsm_group_hw_component| target_hsm_group_hw_component.0.clone());
 
+    // Calculate HSM group hw component counters
     let parent_hsm_hw_component_count_hashmap = get_hsm_hw_component_count(
         &user_defined_hw_component_vec,
         &parent_hsm_group_hw_component_vec,
@@ -289,6 +292,16 @@ pub async fn exec(
         "HSM '{}' hw component counters: {:?}",
         parent_hsm_group_name, parent_hsm_hw_component_count_hashmap
     );
+
+    // Calculate density scores
+    let mut parent_hsm_density_score_hashmap: HashMap<String, usize> = HashMap::new();
+    for parent_hsm_group_hw_component in &parent_hsm_group_hw_component_vec {
+        let counter = parent_hsm_group_hw_component.1.values().sum();
+        parent_hsm_density_score_hashmap.insert(parent_hsm_group_hw_component.clone().0, counter);
+    }
+
+    // *********************************************************************************************************
+    // HSM UPDATES
 
     let (
         hw_components_to_migrate_from_target_hsm_to_parent_hsm,
@@ -324,16 +337,6 @@ pub async fn exec(
             std::process::exit(1);
         }
     }
-
-    // Calculate density scores
-    let mut parent_hsm_density_score_hashmap: HashMap<String, usize> = HashMap::new();
-    for parent_hsm_group_hw_component in &parent_hsm_group_hw_component_vec {
-        let counter = parent_hsm_group_hw_component.1.values().sum();
-        parent_hsm_density_score_hashmap.insert(parent_hsm_group_hw_component.clone().0, counter);
-    }
-
-    // *********************************************************************************************************
-    // HSM UPDATES
 
     println!(
         "\n----- TARGET HSM GROUP '{}' -----\n",
