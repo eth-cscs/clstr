@@ -344,7 +344,7 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let (target_hsm_score_vec, _) =
+    let target_hsm_score_vec =
         calculate_scores_and_normalized_scores(
             &target_hsm_group_hw_component_vec,
             &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
@@ -370,7 +370,7 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let (parent_hsm_score_vec, _) =
+    let parent_hsm_score_vec =
         calculate_scores_and_normalized_scores(
             &parent_hsm_group_hw_component_vec,
             &hw_components_to_migrate_from_parent_hsm_to_target_hsm,
@@ -527,7 +527,7 @@ pub mod utils {
                 );
 
             // Update scores
-            (target_hsm_score_vec, _) =
+            target_hsm_score_vec =
                 calculate_scores_and_normalized_scores(
                     &target_hsm_group_hw_component_vec,
                     &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
@@ -613,18 +613,14 @@ pub mod utils {
     pub fn calculate_scores_and_normalized_scores(
         target_hsm_group_hw_component_vec: &Vec<(String, HashMap<String, usize>)>,
         hw_components_to_migrate_from_target_hsm_to_parent_hsm: &HashMap<String, isize>,
-    ) -> (Vec<(String, isize)>, Vec<(String, isize)>) {
+    ) -> Vec<(String, isize)> {
         // Calculate HSM scores
         let target_hsm_score_vec: Vec<(String, isize)> = calculate_scores(
             &target_hsm_group_hw_component_vec,
             &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
         );
 
-        let target_hsm_normalize_score_vec: Vec<(String, isize)> = Vec::new();
-        /* let target_hsm_normalize_score_vec: Vec<(String, isize)> =
-        calculate_normalized_score(&target_hsm_score_vec); */
-
-        (target_hsm_score_vec, target_hsm_normalize_score_vec)
+        target_hsm_score_vec
     }
 
     pub fn calculate_normalized_score(
