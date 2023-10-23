@@ -130,7 +130,12 @@ impl ArtifactSummary {
         Self {
             xname: nodeaccel_value["ID"].as_str().unwrap().to_string(),
             r#type: ArtifactType::from_str(nodeaccel_value["Type"].as_str().unwrap()).unwrap(),
-            info: "-- TODO --".to_string(),
+            info: nodeaccel_value
+                .pointer("/PopulatedFRU/NodeAccelFRUInfo/Model")
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .to_string(),
         }
     }
 }
@@ -178,14 +183,10 @@ pub async fn exec(
 
     hsm_groups_node_list.sort();
 
-    let mut node_hw_inventory = &hsm::http_client::get_hw_inventory(
-        shasta_token,
-        shasta_base_url,
-        shasta_root_cert,
-        xname,
-    )
-    .await
-    .unwrap();
+    let mut node_hw_inventory =
+        &hsm::http_client::get_hw_inventory(shasta_token, shasta_base_url, shasta_root_cert, xname)
+            .await
+            .unwrap();
 
     node_hw_inventory = node_hw_inventory.pointer("/Nodes/0").unwrap();
 

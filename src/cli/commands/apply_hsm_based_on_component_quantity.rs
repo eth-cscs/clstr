@@ -11,6 +11,7 @@ use crate::{
 };
 
 // TEST --> cargo run -- a hsm -p zinal:a100:4:epyc:30:instinct:2
+// TEST --> cargo run -- a hsm -p zinal:a100:3:epyc:3
 //
 /// Updates HSM groups following a string pattern like <hsm group name>:<node type>:<quantity>:<node type>:<quantity>:...,<hsm group name>:... or <hsm group>:<node type>*:<quantity> and <node type> being <prop>:<prop>:... or <prop>(<prop>)*
 /// Example: zinal:a100:epyc:2:epyc:3:epyc:instinct:1 will provide a list of nodes for HSM group
