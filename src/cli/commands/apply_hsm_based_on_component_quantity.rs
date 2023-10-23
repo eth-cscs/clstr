@@ -344,11 +344,10 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let target_hsm_score_vec =
-        calculate_scores_and_normalized_scores(
-            &target_hsm_group_hw_component_vec,
-            &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
-        );
+    let target_hsm_score_vec = calculate_scores_and_normalized_scores(
+        &target_hsm_group_hw_component_vec,
+        &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+    );
 
     // Migrate nodes
     let nodes_to_remove_in_target_hsm = node_migration(
@@ -370,11 +369,10 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let parent_hsm_score_vec =
-        calculate_scores_and_normalized_scores(
-            &parent_hsm_group_hw_component_vec,
-            &hw_components_to_migrate_from_parent_hsm_to_target_hsm,
-        );
+    let parent_hsm_score_vec = calculate_scores_and_normalized_scores(
+        &parent_hsm_group_hw_component_vec,
+        &hw_components_to_migrate_from_parent_hsm_to_target_hsm,
+    );
 
     // Migrate nodes
     let nodes_to_remove_in_parent_hsm = node_migration(
@@ -447,11 +445,10 @@ pub mod utils {
             return Vec::new();
         }
 
+        ////////////////////////////////
         // Initialize
 
         let mut nodes_migrated_from_target_hsm: Vec<String> = Vec::new();
-
-        // target_hsm_normalize_score_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         // Get best candidate
         let (mut best_candidate, mut best_candidate_counters) = get_best_candidate_to_migrate(
@@ -465,6 +462,7 @@ pub mod utils {
             &best_candidate_counters,
         );
 
+        ////////////////////////////////
         // Itarate
 
         let mut iter = 0;
@@ -527,13 +525,10 @@ pub mod utils {
                 );
 
             // Update scores
-            target_hsm_score_vec =
-                calculate_scores_and_normalized_scores(
-                    &target_hsm_group_hw_component_vec,
-                    &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
-                );
-
-            // target_hsm_normalize_score_vec.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            target_hsm_score_vec = calculate_scores_and_normalized_scores(
+                &target_hsm_group_hw_component_vec,
+                &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+            );
 
             // Get best candidate
             (best_candidate, best_candidate_counters) = get_best_candidate_to_migrate(
