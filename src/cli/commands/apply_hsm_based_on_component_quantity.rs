@@ -98,11 +98,6 @@ pub async fn exec(
 
     let user_defined_hw_component_vec = user_defined_hw_component_vec;
 
-    println!(
-        "User defined hw components: {:?}",
-        user_defined_hw_component_vec
-    );
-
     // *********************************************************************************************************
     // TARGET HSM GROUP
 
