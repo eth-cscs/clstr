@@ -9,14 +9,7 @@ pub async fn process_cli(
     shasta_token: &str,
     shasta_base_url: &str,
     shasta_root_cert: &[u8],
-    vault_base_url: &str,
-    vault_secret_path: &str,
-    vault_role_id: &str,
-    gitea_token: &str,
-    gitea_base_url: &str,
     hsm_group: Option<&String>,
-    // base_image_id: &str,
-    k8s_api_url: &str,
 ) -> core::result::Result<(), Box<dyn std::error::Error>> {
     if let Some(cli_get) = cli_apply.subcommand_matches("get") {
         if let Some(cli_get_node) = cli_get.subcommand_matches("nodes") {

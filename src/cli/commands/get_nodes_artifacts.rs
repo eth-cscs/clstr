@@ -179,15 +179,15 @@ pub async fn exec(
     hsm_groups_node_list.sort();
 
     let mut node_hw_inventory = &hsm::http_client::get_hw_inventory(
-        &shasta_token.to_string(),
-        &shasta_base_url.to_string(),
-        &shasta_root_cert.to_vec(),
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
         xname,
     )
     .await
     .unwrap();
 
-    node_hw_inventory = &node_hw_inventory.pointer("/Nodes/0").unwrap();
+    node_hw_inventory = node_hw_inventory.pointer("/Nodes/0").unwrap();
 
     if let Some(type_artifact) = type_artifact_opt {
         node_hw_inventory = &node_hw_inventory
@@ -203,7 +203,7 @@ pub async fn exec(
     if output_opt.is_some() && output_opt.unwrap().eq("json") {
         println!("{}", serde_json::to_string_pretty(&node_summary).unwrap());
     } else {
-        print_table(&vec![node_summary].to_vec());
+        print_table(&[node_summary].to_vec());
     }
 }
 

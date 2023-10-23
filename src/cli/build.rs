@@ -23,14 +23,12 @@ pub fn subcommand_get_artifacts_node(hsm_group: Option<&String>) -> Command {
         Some(_) => {}
     }
 
-    let get_node_artifacts = Command::new("nodes")
+    Command::new("nodes")
         .aliases(["n", "node", "nd"])
         .about("Get node's artifacts")
         .subcommand(
             artifact_subcommand
-        );
-
-    get_node_artifacts
+        )
 }
 
 pub fn subcommand_get_artifacts_hsm_group(hsm_group: Option<&String>) -> Command {
@@ -47,13 +45,10 @@ pub fn subcommand_get_artifacts_hsm_group(hsm_group: Option<&String>) -> Command
         }
     }
 
-    let get_hsm_group_artifacts = Command::new("hsm-groups")
+    Command::new("hsm-groups")
         .aliases(["h", "hg", "hsm", "hsmgrops"])
         .about("Get HSM group's artifacts")
         .subcommand(artifact_subcommand)
-        ;
-
-    get_hsm_group_artifacts
 }
 
 pub fn subcommand_apply_hsm() -> Command {
@@ -83,13 +78,4 @@ pub fn build_cli(hsm_group: Option<&String>) -> Command {
                 // .subcommand(subcommand_apply_cluster(/* hsm_group */))
                 .subcommand(subcommand_apply_hsm(/* hsm_group */))
         )
-        /* .subcommand(
-            Command::new("update")
-                .alias("u")
-                .arg_required_else_help(true)
-                .about("Update existing cluster details")
-                .subcommand(subcommand_update_nodes(hsm_group))
-                .subcommand(subcommand_update_hsm_group(hsm_group)),
-        ) */
-        // .subcommand(Command::new("delete").alias("d").arg_required_else_help(true).about("Delete HSM group").arg(arg!(<HSM_GROUP_NAME> "HSM group name to delete")))
 }

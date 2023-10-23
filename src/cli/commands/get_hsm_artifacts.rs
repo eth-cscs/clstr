@@ -96,7 +96,7 @@ pub async fn exec(
         }
     } else {
         for node_summary in node_summary_vec {
-            get_nodes_artifacts::print_table(&vec![node_summary].to_vec());
+            get_nodes_artifacts::print_table(&[node_summary].to_vec());
         }
     }
 

@@ -100,7 +100,7 @@ impl HsmHwPatternSummary {
             .node_counter_vec
             .iter()
             .find(|(n, _)| n.eq(&node))
-            .and_then(|(_, counters)| Some(counters))
+            .map(|(_, counters)| counters)
             .unwrap_or(&vec![
                 0u8;
                 self.user_defined_hw_profile_vec_hw_prop_vec_sorted
@@ -149,7 +149,7 @@ impl HsmHwPatternSummary {
             .node_counter_vec
             .iter()
             .find(|(n, _)| n.eq(&node))
-            .and_then(|(_, counters)| Some(counters))
+            .map(|(_, counters)| counters)
             .unwrap_or(&vec![
                 0u8;
                 self.user_defined_hw_profile_vec_hw_prop_vec_sorted
@@ -209,14 +209,7 @@ impl HsmHwPatternSummary {
         let mut elems_to_remove: Vec<String> = self
             .node_counter_vec
             .iter()
-            .filter(|node_counter| {
-                node_counter
-                    .1
-                    .get(hw_profile_index as usize)
-                    .unwrap()
-                    .clone()
-                    > 0
-            })
+            .filter(|node_counter| node_counter.1.get(hw_profile_index as usize).unwrap() > &0)
             .map(|node_counter| node_counter.0.clone())
             .collect();
 
@@ -271,15 +264,13 @@ pub async fn exec(
                 .push(pattern_node_type_vec.clone());
             user_defined_hw_profile_qty_hashmap.insert(pattern_node_type_vec.join(":"), quantity);
             pattern_node_type_vec = Vec::new();
-        } else {
-            if !pattern_node_type_vec.contains(&pattern.to_string()) {
-                // Normalize user hw
-                // properties by
-                // ignoring duplicates
-                // Avoid inserting duplicate
-                // hw properties
-                pattern_node_type_vec.push(pattern.to_string());
-            }
+        } else if !pattern_node_type_vec.contains(&pattern.to_string()) {
+            // Normalize user hw
+            // properties by
+            // ignoring duplicates
+            // Avoid inserting duplicate
+            // hw properties
+            pattern_node_type_vec.push(pattern.to_string());
         }
     }
 
@@ -289,11 +280,14 @@ pub async fn exec(
     ); */
 
     user_defined_hw_properties_grouped_by_hw_profile_vec_sorted
-        .sort_by(|a, b| b.len().cmp(&a.len())); // sorting by number os strings in
-                                                // each hw profile, eg we preffer [{a100, epyc}, {epyc} ] to [ {epyc}, {a100, epyc} ],
-                                                // because most nodes will end up in the first hw property (that matches)
-                                                // and we want to restrict the hw profile match with the node hw inventory
-                                                // coming from CSM as much as we can ...
+        .sort_by_key(|b| std::cmp::Reverse(b.len())); // sorting by number os strings in
+                                                      // each hw profile, eg we preffer [{a100, epyc}, {epyc} ] to [ {epyc}, {a100, epyc} ],
+                                                      // because most nodes will end up in the first hw property (that matches)
+                                                      // and we want to restrict the hw profile match with the node hw inventory
+                                                      // coming from CSM as much as we can ...
+
+    /* user_defined_hw_properties_grouped_by_hw_profile_vec_sorted
+    .sort_by(|a, b| b.len().cmp(&a.len())); */
 
     // Target HSM group
     let target_hsm_group_value = hsm::http_client::get_hsm_group(
@@ -382,7 +376,7 @@ pub async fn exec(
                             .into_iter()
                             .filter(|hw_property| {
                                 user_defined_hw_properties_grouped_by_hw_profile_vec_sorted
-                                    .contains(&vec![hw_property.clone()].to_vec())
+                                    .contains(&[hw_property.clone()].to_vec())
                             })
                             .collect(),
                         [hw_property_vec.join(":")].to_vec(),
@@ -578,7 +572,7 @@ pub async fn exec(
             nodes_to_add_to_target_hsm_group = free_nodes_hsm_hw_pattern_summary
                 .get_candidate_nodes_with_specific_hw_profile(
                     &user_defined_hw_profile,
-                    diff_nodes_hw_profile.abs() as u8,
+                    diff_nodes_hw_profile.unsigned_abs(),
                 );
 
             if (nodes_to_add_to_target_hsm_group.len() as i8) < diff_nodes_hw_profile.abs() {
@@ -613,7 +607,7 @@ pub async fn exec(
             nodes_to_remove_from_target_hsm_group = target_hsm_hw_pattern_summary
                 .get_candidate_nodes_with_specific_hw_profile(
                     &user_defined_hw_profile,
-                    diff_nodes_hw_profile.abs() as u8,
+                    diff_nodes_hw_profile.unsigned_abs(),
                 );
 
             println!(
@@ -705,8 +699,8 @@ pub mod utils {
     }
 
     pub fn check_node_complains_pattern(
-        user_property_vec: &Vec<String>,
-        node_property_vec: &Vec<String>,
+        user_property_vec: &[String],
+        node_property_vec: &[String],
     ) -> u8 {
         if !node_property_vec.is_empty() {
             if user_property_vec
@@ -731,10 +725,7 @@ pub mod utils {
         // Print table
         let mut headers: Vec<Vec<String>> = [Vec::new()].to_vec();
         headers[0].push("Node".to_string());
-        headers = headers
-            .into_iter()
-            .chain(user_patterns.clone().into_iter())
-            .collect();
+        headers = headers.into_iter().chain(user_patterns.clone()).collect();
 
         let mut table = comfy_table::Table::new();
 
@@ -796,21 +787,24 @@ pub mod utils {
         mut hw_property_list: Vec<Vec<String>>,
     ) -> Option<Vec<String>> {
         // println!("patterns: {:?}", patterns_hw_inv_vec);
-        hw_property_list.sort_by(|a, b| b.len().cmp(&a.len())); // sorting by number os strings in
-                                                                // each pattern, eg we preffer [
-                                                                // {a100, epyc},
-                                                                // {epyc} ] to [ {epyc}, {a100, epyc} ], because most nodes will end up in the first pattern and we want to restrict the pattern match with the node inventory coming from CSM as much as we can ...
-                                                                /* println!(
-                                                                    "sorting patterns within same node by... patterns size??? {:#?}",
-                                                                    hw_property_list
-                                                                ); */
+        hw_property_list.sort_by_key(|b| std::cmp::Reverse(b.len())); // sorting by number os strings in
+                                                                      // each pattern, eg we preffer [
+                                                                      // {a100, epyc},
+                                                                      // {epyc} ] to [ {epyc}, {a100, epyc} ], because most nodes will end up in the first pattern and we want to restrict the pattern match with the node inventory coming from CSM as much as we can ...
+
+        // hw_property_list.sort_by(|a, b| b.len().cmp(&a.len()));
+
+        /* println!(
+            "sorting patterns within same node by... patterns size??? {:#?}",
+            hw_property_list
+        ); */
 
         let processor_vec =
-            get_list_processor_model_from_hw_inventory_value(&node_hw_inventory_value)
+            get_list_processor_model_from_hw_inventory_value(node_hw_inventory_value)
                 .unwrap_or_default();
 
         let accelerator_vec =
-            get_list_accelerator_model_from_hw_inventory_value(&node_hw_inventory_value)
+            get_list_accelerator_model_from_hw_inventory_value(node_hw_inventory_value)
                 .unwrap_or_default();
 
         let processor_and_accelerator_concat = [processor_vec.concat(), accelerator_vec.concat()]

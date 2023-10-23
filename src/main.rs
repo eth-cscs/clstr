@@ -1,6 +1,5 @@
 mod cli;
 mod common;
-mod config;
 
 use mesa::shasta;
 use std::path::PathBuf;
@@ -41,12 +40,7 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
     let settings = common::config_ops::get_configuration();
 
     let shasta_base_url = settings.get_string("shasta_base_url").unwrap();
-    let vault_base_url = settings.get_string("vault_base_url").unwrap();
-    let vault_role_id = settings.get_string("vault_role_id").unwrap();
-    let vault_secret_path = settings.get_string("vault_secret_path").unwrap();
-    let gitea_base_url = settings.get_string("gitea_base_url").unwrap();
     let keycloak_base_url = settings.get_string("keycloak_base_url").unwrap();
-    let k8s_api_url = settings.get_string("k8s_api_url").unwrap();
     let log_level = settings.get_string("log").unwrap_or("error".to_string());
 
     // Init logger
@@ -59,39 +53,12 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
     }
 
     let settings_hsm_group_opt = settings.get_string("hsm_group").ok();
-    let settings_hsm_available_vec = settings
-        .get_array("hsm_available")
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .map(|hsm_group| hsm_group.into_string().unwrap())
-        .collect::<Vec<String>>();
 
     let shasta_root_cert = common::config_ops::get_csm_root_cert_content();
-
-    /* let hsm_group = match &settings_hsm_group {
-        Ok(hsm_group_val) => {
-            /* println!(
-                "\nWorking on nodes related to *{}{}{}* hsm groups\n",
-                color::Fg(color::Green),
-                hsm_group_val,
-                color::Fg(color::Reset)
-            ); */
-            Some(hsm_group_val)
-        }
-        Err(_) => None,
-    }; */
 
     let shasta_token =
         authentication::get_api_token(&shasta_base_url, &shasta_root_cert, &keycloak_base_url)
             .await?;
-
-    let gitea_token = crate::common::vault::http_client::fetch_shasta_vcs_token(
-        &vault_base_url,
-        &vault_secret_path,
-        &vault_role_id,
-    )
-    .await
-    .unwrap();
 
     // Process input params
     let matches = crate::cli::build::build_cli(settings_hsm_group_opt.as_ref()).get_matches();
@@ -100,14 +67,7 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,
-        &vault_base_url,
-        &vault_secret_path,
-        &vault_role_id,
-        &gitea_token,
-        &gitea_base_url,
         settings_hsm_group_opt.as_ref(),
-        // &base_image_id,
-        &k8s_api_url,
     )
     .await;
 
