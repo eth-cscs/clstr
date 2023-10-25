@@ -1959,7 +1959,7 @@ dependencies = [
 
 [[package]]
 name = "mesa"
-version = "0.16.4"
+version = "0.16.5"
 dependencies = [
  "anyhow",
  "base64 0.13.1",
