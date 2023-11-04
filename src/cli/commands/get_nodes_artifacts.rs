@@ -82,7 +82,7 @@ impl NodeSummary {
 pub struct ArtifactSummary {
     xname: String,
     r#type: ArtifactType,
-    info: String,
+    info: Option<String>,
 }
 
 impl ArtifactSummary {
@@ -92,24 +92,20 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(processor_value["Type"].as_str().unwrap()).unwrap(),
             info: processor_value
                 .pointer("/PopulatedFRU/ProcessorFRUInfo/Model")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
+                .and_then(|model| Some(model.as_str().unwrap().to_string())),
         }
     }
 
     fn from_memory_value(memory_value: Value) -> Self {
+        println!("DEBUG - memory raw data: {:#?}", memory_value);
         Self {
             xname: memory_value["ID"].as_str().unwrap().to_string(),
             r#type: ArtifactType::from_str(memory_value["Type"].as_str().unwrap()).unwrap(),
             info: memory_value
                 .pointer("/PopulatedFRU/MemoryFRUInfo/CapacityMiB")
-                .unwrap()
-                .as_number()
-                .unwrap()
-                .to_string()
-                + " MiB",
+                .and_then(|capacity_mib| {
+                    Some(capacity_mib.as_number().unwrap().to_string() + " MiB")
+                }),
         }
     }
 
@@ -119,10 +115,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(nodehsnnic_value["Type"].as_str().unwrap()).unwrap(),
             info: nodehsnnic_value
                 .pointer("/NodeHsnNicLocationInfo/Description")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
+                .and_then(|description| Some(description.as_str().unwrap().to_string())),
         }
     }
 
@@ -132,10 +125,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(nodeaccel_value["Type"].as_str().unwrap()).unwrap(),
             info: nodeaccel_value
                 .pointer("/PopulatedFRU/NodeAccelFRUInfo/Model")
-                .unwrap()
-                .as_str()
-                .unwrap()
-                .to_string(),
+                .and_then(|model| Some(model.as_str().unwrap().to_string())),
         }
     }
 }
@@ -224,7 +214,7 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(processor.xname.clone()),
                 Cell::new(processor.r#type.clone()),
-                Cell::new(processor.info.clone()),
+                Cell::new(processor.info.clone().unwrap_or("*** Missing info".to_string())),
             ]);
         }
 
@@ -233,7 +223,7 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(memory.xname.clone()),
                 Cell::new(memory.r#type.clone()),
-                Cell::new(memory.info.clone()),
+                Cell::new(memory.info.clone().unwrap_or("*** Missing info".to_string())),
             ]);
         }
 
@@ -242,7 +232,12 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(node_accel.xname.clone()),
                 Cell::new(node_accel.r#type.clone()),
-                Cell::new(node_accel.info.clone()),
+                Cell::new(
+                    node_accel
+                        .clone()
+                        .info
+                        .unwrap_or("*** Missing info".to_string()),
+                ),
             ]);
         }
 
@@ -251,7 +246,12 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(node_hsn_nic.xname.clone()),
                 Cell::new(node_hsn_nic.r#type.clone()),
-                Cell::new(node_hsn_nic.info.clone()),
+                Cell::new(
+                    node_hsn_nic
+                        .clone()
+                        .info
+                        .unwrap_or("*** Missing info".to_string()),
+                ),
             ]);
         }
     }

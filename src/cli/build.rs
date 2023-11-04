@@ -60,7 +60,7 @@ pub fn subcommand_apply_hsm() -> Command {
 }
 
 pub fn build_cli(hsm_group: Option<&String>) -> Command {
-    Command::new("manta")
+    Command::new("clstr")
         .arg_required_else_help(true)
         .subcommand(
             Command::new("get")
