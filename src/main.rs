@@ -39,8 +39,34 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
 
     let settings = common::config_ops::get_configuration();
 
-    let shasta_base_url = settings.get_string("shasta_base_url").unwrap();
-    let keycloak_base_url = settings.get_string("keycloak_base_url").unwrap();
+    // println!("settings:\n{:#?}", settings);
+
+    let site_name = settings.get_string("site").unwrap();
+    let site_detail_hashmap = settings.get_table("sites").unwrap();
+    let site_detail_value = site_detail_hashmap
+        .get(&site_name)
+        .unwrap()
+        .clone()
+        .into_table()
+        .unwrap();
+
+    let site_available_vec = site_detail_hashmap
+        .keys()
+        .map(|site| site.clone())
+        .collect::<Vec<String>>();
+
+    // println!("site_detail_value:\n{:#?}", site_detail_value);
+
+    let shasta_base_url = site_detail_value
+        .get("shasta_base_url")
+        .unwrap()
+        .to_string();
+
+    let keycloak_base_url = site_detail_value
+        .get("keycloak_base_url")
+        .unwrap()
+        .to_string();
+
     let log_level = settings.get_string("log").unwrap_or("error".to_string());
 
     // Init logger
@@ -54,7 +80,14 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
 
     let settings_hsm_group_opt = settings.get_string("hsm_group").ok();
 
-    let shasta_root_cert = common::config_ops::get_csm_root_cert_content();
+    /* let settings_hsm_available_vec = settings
+        .get_array("hsm_available")
+        .unwrap_or(Vec::new())
+        .into_iter()
+        .map(|hsm_group| hsm_group.into_string().unwrap())
+        .collect::<Vec<String>>(); */
+
+    let shasta_root_cert = common::config_ops::get_csm_root_cert_content(&site_name);
 
     let shasta_token =
         authentication::get_api_token(&shasta_base_url, &shasta_root_cert, &keycloak_base_url)
