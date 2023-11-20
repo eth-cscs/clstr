@@ -81,11 +81,11 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
     let settings_hsm_group_opt = settings.get_string("hsm_group").ok();
 
     /* let settings_hsm_available_vec = settings
-        .get_array("hsm_available")
-        .unwrap_or(Vec::new())
-        .into_iter()
-        .map(|hsm_group| hsm_group.into_string().unwrap())
-        .collect::<Vec<String>>(); */
+    .get_array("hsm_available")
+    .unwrap_or(Vec::new())
+    .into_iter()
+    .map(|hsm_group| hsm_group.into_string().unwrap())
+    .collect::<Vec<String>>(); */
 
     let shasta_root_cert = common::config_ops::get_csm_root_cert_content(&site_name);
 
@@ -107,5 +107,14 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
     match cli_result {
         Ok(_) => Ok(()),
         Err(e) => panic!("{}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    pub fn test_prime_factor() {
+        // let my_number_vec = vec![4, 6, 8, 12, 16, 20, 24];
+        primefactor::PrimeFactors::from(4).to_vec();
     }
 }

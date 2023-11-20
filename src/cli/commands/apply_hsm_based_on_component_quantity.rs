@@ -1,5 +1,8 @@
+use directories::ProjectDirs;
+use mesa::shasta::authentication;
+use primefactor::PrimeFactors;
 use serde_json::json;
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -7,6 +10,7 @@ use crate::{
         calculate_all_deltas, calculate_scores, downscale_node_migration,
         get_hsm_hw_component_summary, hsm_node_hw_profile, upscale_node_migration,
     },
+    common,
     shasta::hsm,
 };
 
@@ -132,7 +136,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&hsm_group_target_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_target_value);
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -237,7 +241,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_parent_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&hsm_group_parent_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -551,7 +555,7 @@ pub async fn exec(
     ]
     .concat();
 
-    new_parent_hsm_members = new_parent_hsm_members 
+    new_parent_hsm_members = new_parent_hsm_members
         .into_iter()
         .filter(|node| {
             !hw_component_counters_to_move_out_from_parent_hsm
@@ -564,7 +568,8 @@ pub async fn exec(
 
     new_target_hsm_members = [
         new_target_hsm_members,
-        hw_component_counters_to_move_out_from_parent_hsm.clone()
+        hw_component_counters_to_move_out_from_parent_hsm
+            .clone()
             .into_iter()
             .map(|(node, _)| node)
             .collect(),
@@ -1210,14 +1215,17 @@ pub mod utils {
         )
     }
 
+    /// Returns a triple like (<xname>, <list of hw components>, <list of memory capacity>)
+    /// Note: list of hw components can be either the hw componentn pattern provided by user or the
+    /// description from the HSM API
     pub async fn hsm_node_hw_profile(
         shasta_token: String,
         shasta_base_url: String,
         shasta_root_cert: Vec<u8>,
         hsm_member: &str,
         user_defined_hw_profile_vec: Vec<String>,
-    ) -> (String, Vec<String>) {
-        let profile = hsm::http_client::get_hw_inventory(
+    ) -> (String, Vec<String>, Vec<u64>) {
+        let node_hw_inventory_value = hsm::http_client::get_hw_inventory(
             &shasta_token,
             &shasta_base_url,
             &shasta_root_cert,
@@ -1226,10 +1234,12 @@ pub mod utils {
         .await
         .unwrap();
 
-        let actual_xname_hw_profile_set =
-            get_node_hw_properties(&profile, user_defined_hw_profile_vec.clone());
+        let node_hw_profile = get_node_hw_properties(
+            &node_hw_inventory_value,
+            user_defined_hw_profile_vec.clone(),
+        );
 
-        (hsm_member.to_string(), actual_xname_hw_profile_set)
+        (hsm_member.to_string(), node_hw_profile.0, node_hw_profile.1)
     }
 
     pub fn get_hsm_hw_component_summary(
@@ -1253,7 +1263,7 @@ pub mod utils {
     pub fn get_node_hw_properties(
         node_hw_inventory_value: &Value,
         hw_component_pattern_list: Vec<String>,
-    ) -> Vec<String> {
+    ) -> (Vec<String>, Vec<u64>) {
         let processor_vec =
             hsm::utils::get_list_processor_model_from_hw_inventory_value(node_hw_inventory_value)
                 .unwrap_or_default();
@@ -1261,6 +1271,10 @@ pub mod utils {
         let accelerator_vec =
             hsm::utils::get_list_accelerator_model_from_hw_inventory_value(node_hw_inventory_value)
                 .unwrap_or_default();
+
+        /* let hsn_nic_vec =
+        hsm::utils::get_list_hsn_nics_model_from_hw_inventory_value(node_hw_inventory_value)
+            .unwrap_or_default(); */
 
         let processor_and_accelerator = [processor_vec, accelerator_vec].concat();
 
@@ -1295,7 +1309,11 @@ pub mod utils {
             }
         }
 
-        node_hw_component_pattern_vec
+        let memory_vec =
+            hsm::utils::get_list_memory_capacity_from_hw_inventory_value(node_hw_inventory_value)
+                .unwrap_or_default();
+
+        (node_hw_component_pattern_vec, memory_vec)
     }
 
     pub fn print_table(
@@ -1408,4 +1426,161 @@ pub mod utils {
 
         println!("{table}\n");
     }
+}
+
+#[tokio::test]
+pub async fn test_memory_capacity() {
+    // XDG Base Directory Specification
+    let project_dirs = ProjectDirs::from(
+        "local", /*qualifier*/
+        "cscs",  /*organization*/
+        "manta", /*application*/
+    );
+
+    let mut path_to_manta_configuration_file = PathBuf::from(project_dirs.unwrap().config_dir());
+
+    path_to_manta_configuration_file.push("config.toml"); // ~/.config/manta/config is the file
+
+    log::info!(
+        "Reading manta configuration from {}",
+        &path_to_manta_configuration_file.to_string_lossy()
+    );
+
+    let settings = common::config_ops::get_configuration();
+
+    let site_name = settings.get_string("site").unwrap();
+    let site_detail_hashmap = settings.get_table("sites").unwrap();
+    let site_detail_value = site_detail_hashmap
+        .get(&site_name)
+        .unwrap()
+        .clone()
+        .into_table()
+        .unwrap();
+
+    let shasta_base_url = site_detail_value
+        .get("shasta_base_url")
+        .unwrap()
+        .to_string();
+
+    let keycloak_base_url = site_detail_value
+        .get("keycloak_base_url")
+        .unwrap()
+        .to_string();
+
+    if let Some(socks_proxy) = site_detail_value.get("socks5_proxy") {
+        std::env::set_var("SOCKS5", socks_proxy.to_string());
+    }
+
+    let shasta_root_cert = common::config_ops::get_csm_root_cert_content(&site_name);
+
+    let shasta_token =
+        authentication::get_api_token(&shasta_base_url, &shasta_root_cert, &keycloak_base_url)
+            .await
+            .unwrap();
+
+    /* let hsm_group_vec =
+    hsm::http_client::get_all_hsm_groups(&shasta_token, &shasta_base_url, &shasta_root_cert)
+        .await
+        .unwrap(); */
+    let hsm_group_vec = hsm::http_client::get_hsm_group_vec(
+        &shasta_token,
+        &shasta_base_url,
+        &shasta_root_cert,
+        Some(&"zinal".to_string()),
+    )
+    .await
+    .unwrap();
+
+    let mut node_hsm_groups_hw_inventory_map: HashMap<&str, (Vec<&str>, Vec<String>, Vec<u64>)> =
+        HashMap::new();
+
+    let new_vec = Vec::new();
+
+    for hsm_group in &hsm_group_vec {
+        let hsm_group_name = hsm_group["label"].as_str().unwrap();
+        let hsm_member_vec: Vec<&str> = hsm_group["members"]["ids"]
+            .as_array()
+            .unwrap_or(&new_vec)
+            .iter()
+            .map(|member| member.as_str().unwrap())
+            .collect();
+
+        for member in hsm_member_vec {
+            println!(
+                "DEBUG - processing node {} in hsm group {}",
+                member, hsm_group_name
+            );
+            if node_hsm_groups_hw_inventory_map.contains_key(member) {
+                println!(
+                    "DEBUG - node {} already processed for hsm groups {:?}",
+                    member,
+                    node_hsm_groups_hw_inventory_map.get(member).unwrap().0
+                );
+
+                node_hsm_groups_hw_inventory_map
+                    .get_mut(member)
+                    .unwrap()
+                    .0
+                    .push(&hsm_group_name);
+            } else {
+                println!(
+                    "DEBUG - fetching hw components for node {} in hsm group {}",
+                    member, hsm_group_name
+                );
+                let hw_inventory = hsm_node_hw_profile(
+                    shasta_token.to_string(),
+                    shasta_base_url.to_string(),
+                    shasta_root_cert.clone(),
+                    member,
+                    Vec::new(),
+                )
+                .await;
+
+                node_hsm_groups_hw_inventory_map.insert(
+                    member,
+                    (vec![hsm_group_name], hw_inventory.1, hw_inventory.2),
+                );
+            }
+        }
+    }
+
+    println!("\n************************************\nDEBUG - HW COMPONENT SUMMARY:\n",);
+
+    let mut query_lcm = u64::MAX;
+
+    for (node, hsm_groups_hw_inventory) in node_hsm_groups_hw_inventory_map {
+        let node_lcm = calculate_lcm(&hsm_groups_hw_inventory.2);
+        if node_lcm < query_lcm {
+            query_lcm = node_lcm;
+        }
+        println!(
+            "DEBUG - node {} hwm groups {:?} hw inventory {:?} memory dimms capacity {:?} lcm {}",
+            node,
+            hsm_groups_hw_inventory.0,
+            hsm_groups_hw_inventory.1,
+            hsm_groups_hw_inventory.2,
+            node_lcm
+        );
+    }
+
+    println!("Query LCM: {}", query_lcm);
+}
+
+/// Calculates greatest common factor or lowest common multiple
+fn calculate_lcm(numbers: &Vec<u64>) -> u64 {
+    let mut lcm = u64::MAX;
+    for number in numbers {
+        let factors = (1..number + 1)
+            .into_iter()
+            .filter(|&x| number % x == 0)
+            .collect::<Vec<u64>>();
+
+        println!("Prime factors for {} --> {:?}", number, factors);
+
+        if factors.last().is_some() && factors.last().unwrap() < &lcm {
+            lcm = *factors.last().unwrap();
+        }
+    }
+
+    lcm
 }

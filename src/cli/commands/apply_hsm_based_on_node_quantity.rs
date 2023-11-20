@@ -300,7 +300,7 @@ pub async fn exec(
     .unwrap();
 
     let hsm_group_parent_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&target_hsm_group_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
 
     let start = Instant::now();
 
@@ -470,7 +470,7 @@ pub async fn exec(
     .unwrap();
 
     let hsm_group_parent_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&hsm_group_parent_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
 
     let start = Instant::now();
 
@@ -550,7 +550,7 @@ pub async fn exec(
     let mut nodes_to_remove_from_target_hsm_group;
     let mut nodes_to_add_to_target_hsm_group;
     let mut target_hsm_group_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&target_hsm_group_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
     let mut parent_hsm_group_members = hsm_group_parent_members.clone();
 
     let hs_profile_total_counters = target_hsm_hw_pattern_summary.get_hw_profile_total_counters();

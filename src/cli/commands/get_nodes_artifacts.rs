@@ -140,7 +140,7 @@ pub async fn exec(
     type_artifact_opt: Option<&String>,
     output_opt: Option<&String>,
 ) {
-    let hsm_groups_resp = hsm::http_client::get_hsm_groups(
+    let hsm_groups_resp = hsm::http_client::get_hsm_group_vec(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -167,7 +167,7 @@ pub async fn exec(
 
     // Take all nodes for all hsm_groups found and put them in a Vec
     let mut hsm_groups_node_list: Vec<String> =
-        hsm::utils::get_members_from_hsm_groups_serde_value(&hsm_group_list)
+        hsm::utils::get_member_vec_from_hsm_group_value_vec(&hsm_group_list)
             .into_iter()
             .collect();
 

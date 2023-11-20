@@ -30,7 +30,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        hsm::utils::get_members_from_hsm_group_serde_value(&hsm_group_value);
+        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
 
     let mut node_summary_vec = Vec::new();
 

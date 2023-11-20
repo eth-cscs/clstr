@@ -14,6 +14,7 @@ publish = false # cargo dist --> Avoid publishing to crates.io
 [dependencies]
 # mesa = "0.16.3"
 mesa = { path = "../mesa" } # Only for development purposes
+prime-factor = "0.4.4"
 strum = "0.25.0"
 strum_macros = "0.25"
 anyhow = "1.0.44"
