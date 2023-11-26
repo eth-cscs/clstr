@@ -97,7 +97,7 @@ impl ArtifactSummary {
     }
 
     fn from_memory_value(memory_value: Value) -> Self {
-        println!("DEBUG - memory raw data: {:#?}", memory_value);
+        // println!("DEBUG - memory raw data: {:#?}", memory_value);
         Self {
             xname: memory_value["ID"].as_str().unwrap().to_string(),
             r#type: ArtifactType::from_str(memory_value["Type"].as_str().unwrap()).unwrap(),

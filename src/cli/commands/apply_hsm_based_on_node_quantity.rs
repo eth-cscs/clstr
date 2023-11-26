@@ -705,7 +705,7 @@ pub mod utils {
         if !node_property_vec.is_empty() {
             if user_property_vec
                 .iter()
-                .all(|user_property| node_property_vec.clone().contains(user_property))
+                .all(|user_property| node_property_vec.contains(user_property))
             {
                 1
             } else {

@@ -7,8 +7,13 @@ use tokio::sync::Semaphore;
 
 use crate::{
     cli::commands::apply_hsm_based_on_component_quantity::utils::{
-        calculate_all_deltas, calculate_scores, downscale_node_migration,
-        get_hsm_hw_component_summary, hsm_node_hw_profile, upscale_node_migration,
+        calculate_all_deltas, calculate_hsm_hw_component_count,
+        calculate_hsm_hw_component_node_scores,
+        calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec,
+        calculate_hsm_hw_component_normalized_node_density_score,
+        calculate_hsm_total_number_hw_components, calculate_lcm, calculate_node_density_score,
+        downscale_node_migration, get_hsm_hw_component_count_filtered_by_user_request,
+        get_node_hw_component_count, upscale_node_migration,
     },
     common,
     shasta::hsm,
@@ -56,6 +61,8 @@ use crate::{
 ///
 /// if HSM group looses all its members, then ask user if HSM should be deleted
 
+// VARS
+
 pub async fn exec(
     shasta_token: &str,
     shasta_base_url: &str,
@@ -63,6 +70,9 @@ pub async fn exec(
     pattern: &str,
     parent_hsm_group_name: &str,
 ) {
+    // lcm -> used to normalize and quantify memory capacity
+    let mem_lcm = 16384; // 1024 * 16
+
     // Normalize text in lowercase and separate each HSM group hw inventory pattern
     let pattern_lowercase = pattern.to_lowercase();
 
@@ -70,15 +80,14 @@ pub async fn exec(
 
     let target_hsm_group_name = pattern_element_vec.remove(0);
 
-    let user_defined_hw_component_counter_hashmap: &mut HashMap<String, usize> =
-        &mut HashMap::new();
+    let mut user_defined_hw_component_count_hashmap: HashMap<String, usize> = HashMap::new();
 
     // Check user input is correct
     for hw_component_counter in pattern_element_vec.chunks(2) {
         if hw_component_counter[0].parse::<String>().is_ok()
             && hw_component_counter[1].parse::<usize>().is_ok()
         {
-            user_defined_hw_component_counter_hashmap.insert(
+            user_defined_hw_component_count_hashmap.insert(
                 hw_component_counter[0].parse::<String>().unwrap(),
                 hw_component_counter[1].parse::<usize>().unwrap(),
             );
@@ -89,22 +98,18 @@ pub async fn exec(
 
     println!(
         "User defined hw components with counters: {:?}",
-        user_defined_hw_component_counter_hashmap
+        user_defined_hw_component_count_hashmap
     );
 
-    let mut user_defined_hw_component_vec: Vec<String> = user_defined_hw_component_counter_hashmap
+    let mut user_defined_hw_component_vec: Vec<String> = user_defined_hw_component_count_hashmap
         .keys()
         .cloned()
         .collect();
 
     user_defined_hw_component_vec.sort();
 
-    let user_defined_hw_component_vec = user_defined_hw_component_vec;
-
     // *********************************************************************************************************
     // PREPREQUISITES TARGET HSM GROUP
-
-    let mut target_hsm_group_hw_component_counter_vec = Vec::new();
 
     // Get target HSM group details
     let hsm_group_target_value = hsm::http_client::get_hsm_group(
@@ -144,14 +149,16 @@ pub async fn exec(
     let mut tasks = tokio::task::JoinSet::new();
 
     let sem = Arc::new(Semaphore::new(5)); // CSM 1.3.1 higher number of concurrent tasks won't
-                                           // make it faster
+
+    // List of node hw component counters belonging to target hsm group
+    let mut target_hsm_node_hw_component_count_vec = Vec::new();
 
     // Get HW inventory details for target HSM group
     for hsm_member in hsm_group_target_members.clone() {
         let shasta_token_string = shasta_token.to_string(); // TODO: make it static
         let shasta_base_url_string = shasta_base_url.to_string(); // TODO: make it static
         let shasta_root_cert_vec = shasta_root_cert.to_vec();
-        let user_defined_hw_component_vec = user_defined_hw_component_counter_hashmap
+        let user_defined_hw_component_vec = user_defined_hw_component_count_hashmap
             .keys()
             .cloned()
             .collect::<Vec<_>>()
@@ -162,7 +169,7 @@ pub async fn exec(
         // println!("user_defined_hw_profile_vec_aux: {:?}", user_defined_hw_profile_vec_aux);
         tasks.spawn(async move {
             let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
-            hsm_node_hw_profile(
+            get_node_hw_component_count(
                 shasta_token_string,
                 shasta_base_url_string,
                 shasta_root_cert_vec,
@@ -174,17 +181,31 @@ pub async fn exec(
     }
 
     while let Some(message) = tasks.join_next().await {
-        if let Ok(mut node_hw_property_vec_tuple) = message {
-            node_hw_property_vec_tuple.1.sort();
+        if let Ok(mut node_hw_component_vec_tuple) = message {
+            node_hw_component_vec_tuple.1.sort();
 
-            let mut counts: HashMap<String, usize> = HashMap::new();
+            let mut node_hw_component_count_hashmap: HashMap<String, usize> = HashMap::new();
 
-            for node_hw_property_vec in node_hw_property_vec_tuple.1 {
-                let count = counts.entry(node_hw_property_vec).or_insert(0);
+            for node_hw_property_vec in node_hw_component_vec_tuple.1 {
+                let count = node_hw_component_count_hashmap
+                    .entry(node_hw_property_vec)
+                    .or_insert(0);
                 *count += 1;
             }
 
-            target_hsm_group_hw_component_counter_vec.push((node_hw_property_vec_tuple.0, counts));
+            let node_memory_total_capacity: u64 = node_hw_component_vec_tuple.2.iter().sum();
+
+            node_hw_component_count_hashmap.insert(
+                format!("Memory {}", mem_lcm),
+                (node_memory_total_capacity / mem_lcm)
+                    .try_into()
+                    .unwrap_or(0),
+            );
+
+            target_hsm_node_hw_component_count_vec.push((
+                node_hw_component_vec_tuple.0,
+                node_hw_component_count_hashmap,
+            ));
         } else {
             log::error!("Failed procesing/fetching node hw information");
         }
@@ -198,36 +219,67 @@ pub async fn exec(
     );
 
     // Sort nodes hw counters by node name
-    target_hsm_group_hw_component_counter_vec
+    target_hsm_node_hw_component_count_vec
         .sort_by_key(|target_hsm_group_hw_component| target_hsm_group_hw_component.0.clone());
 
-    /* println!(
-        "DEBUG - target_hsm_group_hw_component_counter_vec:\n{:#?}",
-        target_hsm_group_hw_component_counter_vec
-    ); */
-
-    // Calculate HSM group hw component counters
-    let target_hsm_hw_component_summary_hashmap = get_hsm_hw_component_summary(
-        &user_defined_hw_component_vec,
-        &target_hsm_group_hw_component_counter_vec,
+    println!(
+        "DEBUG - target_hsm_node_hw_component_count_vec: {:?}",
+        target_hsm_node_hw_component_count_vec
     );
+
+    // Calculate hw component counters in HSM
+    let target_hsm_hw_component_count_hashmap: HashMap<String, usize> =
+        calculate_hsm_hw_component_count(&target_hsm_node_hw_component_count_vec);
 
     println!(
-        "HSM '{}' hw component counters: {:?}",
-        target_hsm_group_name, target_hsm_hw_component_summary_hashmap
+        "DEBUG - target_hsm_hw_component_count: {:?}",
+        target_hsm_hw_component_count_hashmap
     );
 
-    // Calculate density scores
-    let mut target_hsm_density_score_hashmap: HashMap<String, usize> = HashMap::new();
-    for target_hsm_group_hw_component in &target_hsm_group_hw_component_counter_vec {
-        let counter = target_hsm_group_hw_component.1.values().sum();
-        target_hsm_density_score_hashmap.insert(target_hsm_group_hw_component.clone().0, counter);
-    }
+    // Calculate hw component counters in HSM filtered by user request
+    let target_hsm_hw_component_count_filtered_by_user_request_hashmap: HashMap<String, usize> =
+        get_hsm_hw_component_count_filtered_by_user_request(
+            &user_defined_hw_component_vec,
+            &target_hsm_node_hw_component_count_vec,
+        );
+
+    println!(
+        "HSM '{}' hw component counters filtered by user request: {:?}",
+        target_hsm_group_name, target_hsm_hw_component_count_filtered_by_user_request_hashmap
+    );
+
+    // Calculate density scores for each node in HSM
+    let target_hsm_density_score_hashmap: HashMap<String, usize> =
+        calculate_node_density_score(&target_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - HSM '{}' node's density score: {:?}",
+        target_hsm_group_name, target_hsm_density_score_hashmap
+    );
+
+    // Calculate total number of hw components in HSM
+    let target_hsm_total_number_hw_components: usize =
+        calculate_hsm_total_number_hw_components(&mut target_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - HSM '{}' --> total_number_hw_components: {}",
+        target_hsm_group_name, target_hsm_total_number_hw_components
+    );
+
+    // Calculate nomarlized score for each hw component in HSM group
+    let target_hsm_hw_component_normalized_scores =
+        calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec(
+            &target_hsm_node_hw_component_count_vec,
+            target_hsm_total_number_hw_components,
+        );
+
+    println!(
+        "DEBUG - target_hsm_hw_component_normalized_scores: {:?}",
+        target_hsm_hw_component_normalized_scores
+    );
 
     // *********************************************************************************************************
     // PREREQUISITES PARENT HSM GROUP
-
-    let mut parent_hsm_group_hw_component_counter_vec = Vec::new();
 
     // Get parent HSM group details
     let hsm_group_parent_value = hsm::http_client::get_hsm_group(
@@ -251,12 +303,15 @@ pub async fn exec(
     let sem = Arc::new(Semaphore::new(5)); // CSM 1.3.1 higher number of concurrent tasks won't
                                            // make it faster
 
+    // List of node hw component counters belonging to parent hsm group
+    let mut parent_hsm_node_hw_component_count_vec = Vec::new();
+
     // Get HW inventory details for parent HSM group
     for hsm_member in hsm_group_parent_members.clone() {
         let shasta_token_string = shasta_token.to_string();
         let shasta_base_url_string = shasta_base_url.to_string();
         let shasta_root_cert_vec = shasta_root_cert.to_vec();
-        let user_defined_hw_component_vec = user_defined_hw_component_counter_hashmap
+        let user_defined_hw_component_vec = user_defined_hw_component_count_hashmap
             .keys()
             .cloned()
             .collect::<Vec<_>>()
@@ -267,7 +322,7 @@ pub async fn exec(
         // println!("user_defined_hw_profile_vec_aux: {:?}", user_defined_hw_profile_vec_aux);
         tasks.spawn(async move {
             let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
-            hsm_node_hw_profile(
+            get_node_hw_component_count(
                 shasta_token_string,
                 shasta_base_url_string,
                 shasta_root_cert_vec,
@@ -279,17 +334,31 @@ pub async fn exec(
     }
 
     while let Some(message) = tasks.join_next().await {
-        if let Ok(mut node_hw_property_vec_tuple) = message {
-            node_hw_property_vec_tuple.1.sort();
+        if let Ok(mut node_hw_component_vec_tuple) = message {
+            node_hw_component_vec_tuple.1.sort();
 
-            let mut counts: HashMap<String, usize> = HashMap::new();
+            let mut node_hw_component_count_hashmap: HashMap<String, usize> = HashMap::new();
 
-            for node_hw_property_vec in node_hw_property_vec_tuple.1 {
-                let count = counts.entry(node_hw_property_vec).or_insert(0);
+            for node_hw_property_vec in node_hw_component_vec_tuple.1 {
+                let count = node_hw_component_count_hashmap
+                    .entry(node_hw_property_vec)
+                    .or_insert(0);
                 *count += 1;
             }
 
-            parent_hsm_group_hw_component_counter_vec.push((node_hw_property_vec_tuple.0, counts));
+            let node_memory_total_capacity: u64 = node_hw_component_vec_tuple.2.iter().sum();
+
+            node_hw_component_count_hashmap.insert(
+                format!("Memory {}", mem_lcm),
+                (node_memory_total_capacity / mem_lcm)
+                    .try_into()
+                    .unwrap_or(0),
+            );
+
+            parent_hsm_node_hw_component_count_vec.push((
+                node_hw_component_vec_tuple.0,
+                node_hw_component_count_hashmap,
+            ));
         } else {
             log::error!("Failed procesing/fetching node hw information");
         }
@@ -303,40 +372,33 @@ pub async fn exec(
     );
 
     // Sort nodes hw counters by node name
-    parent_hsm_group_hw_component_counter_vec
+    parent_hsm_node_hw_component_count_vec
         .sort_by_key(|parent_hsm_group_hw_component| parent_hsm_group_hw_component.0.clone());
 
-    /* println!(
-        "parent_hsm_group_hw_component_vec:\n{:#?}",
-        parent_hsm_group_hw_component_vec
-    ); */
-
-    // Calculate HSM group hw component counters
-    let parent_hsm_hw_component_summary_hashmap = get_hsm_hw_component_summary(
-        &user_defined_hw_component_vec,
-        &parent_hsm_group_hw_component_counter_vec,
-    );
-
     println!(
-        "HSM '{}' hw component summary: {:?}",
-        parent_hsm_group_name, parent_hsm_hw_component_summary_hashmap
+        "DEBUG - node_hw_component_count_hashmap_parent_hsm_vec: {:?}",
+        parent_hsm_node_hw_component_count_vec
     );
+
+    //CAN'T CALCULATE ANY SCORE, COUNT IN HSM GROUP BECUASE AT THIS POINT PARENT HSM HAS NOT
+    //INCORPORATED THE NODES FROM PARENT HSM
 
     // *********************************************************************************************************
     // HSM UPDATES
 
+    // Calculate deltas
     let (
         mut hw_components_to_migrate_from_target_hsm_to_parent_hsm,
         hw_components_to_migrate_from_parent_hsm_to_target_hsm,
     ) = calculate_all_deltas(
-        user_defined_hw_component_counter_hashmap,
-        &target_hsm_hw_component_summary_hashmap,
+        &user_defined_hw_component_count_hashmap,
+        &target_hsm_hw_component_count_filtered_by_user_request_hashmap,
     );
 
     // Add hw components in HSM target nodes not requested by user to downscaling deltas (hw
     // components to migrate from HSM targer to HSM parent)
     let mut hw_components_missing_in_user_request: HashMap<String, isize> = HashMap::new();
-    for (_xname, hw_component_counter_hashmap) in &target_hsm_group_hw_component_counter_vec {
+    for (_xname, hw_component_counter_hashmap) in &target_hsm_node_hw_component_count_vec {
         for (hw_component, quantity) in hw_component_counter_hashmap {
             if !user_defined_hw_component_vec.contains(&hw_component) {
                 hw_components_missing_in_user_request
@@ -376,6 +438,78 @@ pub async fn exec(
         hw_components_to_migrate_from_parent_hsm_to_target_hsm
     );
 
+    let target_hsm_normalized_density_score_tuple_vec: Vec<(String, f32)> =
+        calculate_hsm_hw_component_normalized_node_density_score(
+            &target_hsm_node_hw_component_count_vec,
+            &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+            &user_defined_hw_component_count_hashmap,
+            &target_hsm_hw_component_normalized_scores,
+            &target_hsm_hw_component_count_hashmap,
+            target_hsm_total_number_hw_components,
+        );
+
+    println!(
+        "DEBUG - target_hsm_normalized_density_score_tuple_vec : {:#?}",
+        target_hsm_normalized_density_score_tuple_vec
+    );
+
+    // *********************************************************************************************************
+    // COLLECTIVE DATA TO HELP CALCULATING SCORES
+
+    // Calculate hs component counters for target and parent hsm groups
+    let target_parent_hsm_node_hw_component_count_vec = [
+        target_hsm_node_hw_component_count_vec.clone(),
+        parent_hsm_node_hw_component_count_vec.clone(),
+    ]
+    .concat();
+
+    /* let target_parent_hsm_hw_component_summary_hashmap =
+    get_hsm_hw_component_count_filtered_by_user_request(
+        &user_defined_hw_component_vec,
+        &node_hw_component_count_hashmap_target_parent_hsm_vec,
+    ); */
+
+    // Calculate hw component counters in HSM
+    let target_parent_hsm_hw_component_count_hashmap: HashMap<String, usize> =
+        calculate_hsm_hw_component_count(&target_parent_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - target_parent_hsm_hw_component_count_hashmap : {:?}",
+        target_parent_hsm_hw_component_count_hashmap
+    );
+
+    // Calculate hw component counters in HSM filtered by user request
+    let target_parent_hsm_hw_component_count_filtered_by_user_request_hashmap: HashMap<
+        String,
+        usize,
+    > = get_hsm_hw_component_count_filtered_by_user_request(
+        &user_defined_hw_component_vec,
+        &target_parent_hsm_node_hw_component_count_vec,
+    );
+
+    println!(
+        "HSM 'collective' hw component counters filtered by user request: {:?}",
+        target_parent_hsm_hw_component_count_filtered_by_user_request_hashmap
+    );
+
+    // Calculate density scores for each node in HSM
+    let target_parent_hsm_density_score_hashmap: HashMap<String, usize> =
+        calculate_node_density_score(&target_parent_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - HSM 'colective' node's density score: {:?}",
+        target_parent_hsm_density_score_hashmap
+    );
+
+    // Calculate total number of hw components in HSM
+    let target_parent_parent_hsm_total_number_hw_components: usize =
+        calculate_hsm_total_number_hw_components(&target_parent_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - total_number_hw_components: {}",
+        target_parent_parent_hsm_total_number_hw_components
+    );
+
     // *********************************************************************************************************
     // FIND NODES TO MOVE FROM TARGET TO PARENT HSM GROUP
 
@@ -392,9 +526,13 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let target_hsm_score_vec = calculate_scores(
-        &target_hsm_group_hw_component_counter_vec,
+    let target_hsm_score_tuple_vec = calculate_hsm_hw_component_normalized_node_density_score(
+        &target_hsm_node_hw_component_count_vec,
         &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+        &user_defined_hw_component_count_hashmap,
+        &target_hsm_hw_component_normalized_scores,
+        &target_hsm_hw_component_count_hashmap,
+        target_hsm_total_number_hw_components,
     );
 
     /* println!(
@@ -408,12 +546,14 @@ pub async fn exec(
 
     // Migrate nodes
     let hw_component_counters_to_move_out_from_target_hsm = downscale_node_migration(
-        user_defined_hw_component_counter_hashmap,
+        &mut user_defined_hw_component_count_hashmap,
         &user_defined_hw_component_vec,
-        &mut target_hsm_group_hw_component_counter_vec,
+        &mut target_hsm_node_hw_component_count_vec,
         &target_hsm_density_score_hashmap,
-        target_hsm_score_vec,
+        target_hsm_score_tuple_vec,
         hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+        &target_hsm_hw_component_normalized_scores,
+        &target_hsm_hw_component_count_hashmap,
     );
 
     // println!("DEBUG - hw_component_counters_to_move_out_from_target_hsm:\n{:?}", hw_component_counters_to_move_out_from_target_hsm);
@@ -423,55 +563,72 @@ pub async fn exec(
 
     println!("\n----- UPDATE TARGET AND PARENT HSM GROUPS -----\n");
 
-    parent_hsm_group_hw_component_counter_vec = [
-        parent_hsm_group_hw_component_counter_vec,
+    parent_hsm_node_hw_component_count_vec = [
+        parent_hsm_node_hw_component_count_vec,
         hw_component_counters_to_move_out_from_target_hsm.clone(),
     ]
     .concat();
 
-    // Calculate HSM group hw component counters
-    let target_hsm_hw_component_summary_hashmap = get_hsm_hw_component_summary(
-        &user_defined_hw_component_vec,
-        &target_hsm_group_hw_component_counter_vec,
-    );
-
-    // Calculate HSM group hw component counters
-    let parent_hsm_hw_component_summary_hashmap = get_hsm_hw_component_summary(
-        &user_defined_hw_component_vec,
-        &parent_hsm_group_hw_component_counter_vec,
-    );
+    // Calculate hw component counters in HSM
+    let parent_hsm_hw_component_count_hashmap_vec: HashMap<String, usize> =
+        calculate_hsm_hw_component_count(&parent_hsm_node_hw_component_count_vec);
 
     println!(
-        "HSM '{}' hw component summary: {:?}",
-        target_hsm_group_name, target_hsm_hw_component_summary_hashmap
+        "DEBUG - parent_hsm_hw_component_count: {:?}",
+        parent_hsm_hw_component_count_hashmap_vec
     );
+
+    // Calculate hw component counters in HSM filtered by user request
+    let parent_hsm_hw_component_count_filtered_by_user_request: HashMap<String, usize> =
+        get_hsm_hw_component_count_filtered_by_user_request(
+            &user_defined_hw_component_vec,
+            &parent_hsm_node_hw_component_count_vec,
+        );
 
     println!(
-        "HSM '{}' hw component summary: {:?}",
-        parent_hsm_group_name, parent_hsm_hw_component_summary_hashmap
+        "HSM '{}' hw component counters filtered by user request: {:?}",
+        parent_hsm_group_name, parent_hsm_hw_component_count_filtered_by_user_request
     );
 
-    let (_, hw_components_to_migrate_from_parent_hsm_to_target_hsm) = calculate_all_deltas(
-        user_defined_hw_component_counter_hashmap,
-        &target_hsm_hw_component_summary_hashmap,
+    // Calculate density scores for each node in HSM
+    let parent_hsm_density_score_hashmap: HashMap<String, usize> =
+        calculate_node_density_score(&parent_hsm_node_hw_component_count_vec);
+
+    println!(
+        "DEBUG - HSM '{}' node's density score: {:?}",
+        parent_hsm_group_name, parent_hsm_density_score_hashmap
     );
 
-    // Calculate density scores
-    let mut parent_hsm_density_score_hashmap: HashMap<String, usize> = HashMap::new();
-    for parent_hsm_group_hw_component in &parent_hsm_group_hw_component_counter_vec {
-        let counter = parent_hsm_group_hw_component.1.values().sum();
-        parent_hsm_density_score_hashmap.insert(parent_hsm_group_hw_component.clone().0, counter);
-    }
+    // Calculate total number of hw components in HSM
+    let parent_hsm_total_number_hw_components: usize =
+        calculate_hsm_total_number_hw_components(&mut parent_hsm_node_hw_component_count_vec);
 
+    println!(
+        "DEBUG - HSM '{}' --> total_number_hw_components: {}",
+        parent_hsm_group_name, parent_hsm_total_number_hw_components
+    );
+
+    // Calculate nomarlized score for each hw component in HSM group
+    let parent_hsm_hw_component_normalized_scores =
+        calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec(
+            &parent_hsm_node_hw_component_count_vec,
+            parent_hsm_total_number_hw_components,
+        );
+
+    println!(
+        "DEBUG - parent_hsm_hw_component_normalized_scores: {:?}",
+        parent_hsm_hw_component_normalized_scores
+    );
+
+    // *********************************************************************************************************
     // VALIDATION
-    // Check parent HSM has enough capacity to handle user request
-    for (hw_component, quantity) in &hw_components_to_migrate_from_parent_hsm_to_target_hsm {
-        let resources_letf_in_parent_hsm_group = (*parent_hsm_hw_component_summary_hashmap
+    // Check collective HSM has enough capacity to process user request
+    for (hw_component, qty_requested) in &user_defined_hw_component_count_hashmap {
+        let qty_available = target_parent_hsm_hw_component_count_hashmap
             .get(hw_component)
-            .unwrap() as isize)
-            + quantity;
-        if resources_letf_in_parent_hsm_group < 0 {
-            eprintln!("Parent HSM {} does not have enough resources to fulfill user request. Not enough {} ({}). Exit", parent_hsm_group_name, hw_component, resources_letf_in_parent_hsm_group);
+            .unwrap();
+        if qty_available < &qty_requested {
+            eprintln!("HSM 'collective' does not have enough resources to fulfill user request. User is requesting {} ({}) but only avaiable {}. Exit", hw_component, qty_requested, qty_available);
             std::process::exit(1);
         }
     }
@@ -492,8 +649,8 @@ pub async fn exec(
     );
 
     // Calculate initial scores
-    let parent_hsm_score_vec = calculate_scores(
-        &parent_hsm_group_hw_component_counter_vec,
+    let parent_hsm_score_tuple_vec = calculate_hsm_hw_component_node_scores(
+        &parent_hsm_node_hw_component_count_vec,
         &hw_components_to_migrate_from_parent_hsm_to_target_hsm,
     );
 
@@ -524,11 +681,11 @@ pub async fn exec(
 
     // Migrate nodes
     let hw_component_counters_to_move_out_from_parent_hsm = upscale_node_migration(
-        user_defined_hw_component_counter_hashmap,
+        &mut user_defined_hw_component_count_hashmap,
         &user_defined_hw_component_vec,
-        &mut parent_hsm_group_hw_component_counter_vec,
+        &mut parent_hsm_node_hw_component_count_vec,
         &parent_hsm_density_score_hashmap,
-        parent_hsm_score_vec,
+        parent_hsm_score_tuple_vec,
         hw_components_to_migrate_from_parent_hsm_to_target_hsm,
     );
 
@@ -592,7 +749,7 @@ pub async fn exec(
 }
 
 pub mod utils {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, ops::Deref};
 
     use comfy_table::Color;
     use serde_json::Value;
@@ -607,10 +764,10 @@ pub mod utils {
         user_defined_hw_component_vec: &Vec<String>,
         parent_hsm_hw_component_vec: &mut Vec<(String, HashMap<String, usize>)>,
         parent_hsm_density_score_hashmap: &HashMap<String, usize>,
-        mut parent_hsm_score_vec: Vec<(String, isize)>,
+        mut parent_hsm_score_tuple_vec: Vec<(String, isize)>,
         mut hw_components_to_migrate_from_target_hsm_to_parent_hsm: HashMap<String, isize>,
     ) -> Vec<(String, HashMap<String, usize>)> {
-        if parent_hsm_score_vec.is_empty() {
+        if parent_hsm_score_tuple_vec.is_empty() {
             log::info!("No candidates to choose from");
             return Vec::new();
         }
@@ -623,7 +780,7 @@ pub mod utils {
         // Get best candidate
         let (mut best_candidate, mut best_candidate_counters) =
             get_best_candidate_to_upscale_migrate(
-                &mut parent_hsm_score_vec,
+                &mut parent_hsm_score_tuple_vec,
                 parent_hsm_hw_component_vec,
             );
 
@@ -648,10 +805,11 @@ pub mod utils {
                 user_defined_hw_component_counter_vec
             );
             // Calculate HSM group hw component counters
-            let target_hsm_hw_component_count_hashmap = get_hsm_hw_component_summary(
-                user_defined_hw_component_vec,
-                parent_hsm_hw_component_vec,
-            );
+            let target_hsm_hw_component_count_hashmap =
+                get_hsm_hw_component_count_filtered_by_user_request(
+                    user_defined_hw_component_vec,
+                    parent_hsm_hw_component_vec,
+                );
             println!(
                 "HSM group hw component counters: {:?}",
                 target_hsm_hw_component_count_hashmap
@@ -663,7 +821,7 @@ pub mod utils {
             println!(
                 "Best candidate is '{}' with score {} and hw component counters {:?}\n",
                 best_candidate.0,
-                parent_hsm_score_vec
+                parent_hsm_score_tuple_vec
                     .iter()
                     .find(|(node, _score)| node.eq(&best_candidate.0))
                     .unwrap()
@@ -676,7 +834,7 @@ pub mod utils {
                 user_defined_hw_component_vec,
                 parent_hsm_hw_component_vec,
                 parent_hsm_density_score_hashmap,
-                &parent_hsm_score_vec,
+                &parent_hsm_score_tuple_vec,
             );
 
             ////////////////////////////////
@@ -701,14 +859,14 @@ pub mod utils {
                 );
 
             // Update scores
-            parent_hsm_score_vec = calculate_scores(
+            parent_hsm_score_tuple_vec = calculate_hsm_hw_component_node_scores(
                 parent_hsm_hw_component_vec,
                 &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
             );
 
             // Get best candidate
             (best_candidate, best_candidate_counters) = get_best_candidate_to_upscale_migrate(
-                &mut parent_hsm_score_vec,
+                &mut parent_hsm_score_tuple_vec,
                 parent_hsm_hw_component_vec,
             );
 
@@ -732,7 +890,7 @@ pub mod utils {
             user_defined_hw_component_vec,
             parent_hsm_hw_component_vec,
             parent_hsm_density_score_hashmap,
-            &parent_hsm_score_vec,
+            &parent_hsm_score_tuple_vec,
         );
 
         nodes_migrated_from_target_hsm
@@ -811,14 +969,16 @@ pub mod utils {
     /// Returns a tuple with 2 vecs, the left one is the new target HSM group while the left one is
     /// the one containing the nodes removed from the target HSM
     pub fn downscale_node_migration(
-        user_defined_hw_component_counter_vec: &HashMap<String, usize>,
+        user_defined_hw_component_count_hashmap: &HashMap<String, usize>,
         user_defined_hw_component_vec: &Vec<String>,
-        target_hsm_hw_component_counter_vec: &mut Vec<(String, HashMap<String, usize>)>,
-        target_hsm_density_score_hashmap: &HashMap<String, usize>,
-        mut target_hsm_score_vec: Vec<(String, isize)>,
+        target_hsm_node_hw_component_count_vec: &mut Vec<(String, HashMap<String, usize>)>,
+        target_hsm_node_density_score_hashmap: &HashMap<String, usize>,
+        mut target_hsm_score_tuple_vec: Vec<(String, f32)>,
         mut hw_components_to_migrate_from_target_hsm_to_parent_hsm: HashMap<String, isize>,
+        target_hsm_hw_component_normalized_scores_hashmap: &HashMap<String, f32>,
+        target_hsm_hw_component_count_hashmap: &HashMap<String, usize>,
     ) -> Vec<(String, HashMap<String, usize>)> {
-        if target_hsm_score_vec.is_empty() {
+        if target_hsm_score_tuple_vec.is_empty() {
             log::info!("No candidates to choose from");
             return Vec::new();
         }
@@ -830,9 +990,9 @@ pub mod utils {
 
         // Get best candidate
         let (mut best_candidate, mut best_candidate_counters) =
-            get_best_candidate_to_downscale_migrate(
-                &mut target_hsm_score_vec,
-                target_hsm_hw_component_counter_vec,
+            get_best_candidate_to_downscale_migrate_f32_score(
+                &mut target_hsm_score_tuple_vec,
+                target_hsm_node_hw_component_count_vec,
             );
 
         /* println!("DEBUG - best_candidate: {:?}", best_candidate);
@@ -859,16 +1019,17 @@ pub mod utils {
 
             println!(
                 "HW component counters requested by user: {:?}",
-                user_defined_hw_component_counter_vec
+                user_defined_hw_component_count_hashmap
             );
             // Calculate HSM group hw component counters
-            let target_hsm_hw_component_count_hashmap = get_hsm_hw_component_summary(
-                user_defined_hw_component_vec,
-                target_hsm_hw_component_counter_vec,
-            );
+            let target_hsm_hw_component_filtered_by_user_request_count_hashmap =
+                get_hsm_hw_component_count_filtered_by_user_request(
+                    user_defined_hw_component_vec,
+                    target_hsm_node_hw_component_count_vec,
+                );
             println!(
                 "HSM group hw component counters: {:?}",
-                target_hsm_hw_component_count_hashmap
+                target_hsm_hw_component_filtered_by_user_request_count_hashmap
             );
             println!(
                 "HW component counters yet to remove: {:?}",
@@ -877,7 +1038,7 @@ pub mod utils {
             println!(
                 "Best candidate is '{}' with score {} and hw component counters {:?}\n",
                 best_candidate.0,
-                target_hsm_score_vec
+                target_hsm_score_tuple_vec
                     .iter()
                     .find(|(node, _score)| node.eq(&best_candidate.0))
                     .unwrap()
@@ -886,11 +1047,11 @@ pub mod utils {
             );
 
             // Print target hsm group hw configuration in table
-            print_table(
+            print_table_f32_score(
                 user_defined_hw_component_vec,
-                target_hsm_hw_component_counter_vec,
-                target_hsm_density_score_hashmap,
-                &target_hsm_score_vec,
+                target_hsm_node_hw_component_count_vec,
+                target_hsm_node_density_score_hashmap,
+                &target_hsm_score_tuple_vec,
             );
 
             ////////////////////////////////
@@ -900,10 +1061,10 @@ pub mod utils {
             nodes_migrated_from_target_hsm
                 .push((best_candidate.0.clone(), best_candidate_counters.clone()));
 
-            // Remove best candidate from target HSM group
-            target_hsm_hw_component_counter_vec.retain(|(node, _)| !node.eq(&best_candidate.0));
+            // Remove best candidate from target HSM grour
+            target_hsm_node_hw_component_count_vec.retain(|(node, _)| !node.eq(&best_candidate.0));
 
-            if target_hsm_hw_component_counter_vec.is_empty() {
+            if target_hsm_node_hw_component_count_vec.is_empty() {
                 break;
             }
 
@@ -914,17 +1075,37 @@ pub mod utils {
                     &best_candidate_counters,
                 );
 
+            // Calculate total number of hw components in hsm group
+            /* println!(
+                "DEBUG - ########### hsm hw components: {:?}",
+                target_hsm_hw_component_count_vec
+            ); */
+            let target_hsm_hw_component_count_hashmap =
+                calculate_hsm_hw_component_count(target_hsm_node_hw_component_count_vec);
+            println!("DEBUG - New HSM hw component counters: {:?}", target_hsm_hw_component_count_hashmap);
+            let target_hsm_total_number_hw_components: usize =
+                calculate_hsm_total_number_hw_components(target_hsm_node_hw_component_count_vec);
+            println!("DEBUG - Total number hw components: {}", target_hsm_total_number_hw_components);
+
             // Update scores
-            target_hsm_score_vec = calculate_scores(
-                target_hsm_hw_component_counter_vec,
+            target_hsm_score_tuple_vec = calculate_hsm_hw_component_normalized_node_density_score(
+                target_hsm_node_hw_component_count_vec,
                 &hw_components_to_migrate_from_target_hsm_to_parent_hsm,
+                user_defined_hw_component_count_hashmap,
+                target_hsm_hw_component_normalized_scores_hashmap,
+                &target_hsm_hw_component_count_hashmap,
+                target_hsm_total_number_hw_components,
             );
 
+            // Remove best candidate from scores
+            target_hsm_score_tuple_vec.retain(|(node, _)| !node.eq(&best_candidate.0));
+
             // Get best candidate
-            (best_candidate, best_candidate_counters) = get_best_candidate_to_downscale_migrate(
-                &mut target_hsm_score_vec,
-                target_hsm_hw_component_counter_vec,
-            );
+            (best_candidate, best_candidate_counters) =
+                get_best_candidate_to_downscale_migrate_f32_score(
+                    &mut target_hsm_score_tuple_vec,
+                    target_hsm_node_hw_component_count_vec,
+                );
 
             // Check if we need to keep iterating
             work_to_do = keep_iterating_downscale(
@@ -942,11 +1123,11 @@ pub mod utils {
         println!("No candidates found\n");
 
         // Print target hsm group hw configuration in table
-        print_table(
+        print_table_f32_score(
             user_defined_hw_component_vec,
-            target_hsm_hw_component_counter_vec,
-            target_hsm_density_score_hashmap,
-            &target_hsm_score_vec,
+            target_hsm_node_hw_component_count_vec,
+            target_hsm_node_density_score_hashmap,
+            &target_hsm_score_tuple_vec,
         );
 
         nodes_migrated_from_target_hsm
@@ -1022,6 +1203,33 @@ pub mod utils {
         (best_candidate, best_candidate_counters.clone())
     }
 
+    pub fn get_best_candidate_to_downscale_migrate_f32_score(
+        target_hsm_score_vec: &mut [(String, f32)],
+        target_hsm_hw_component_vec: &[(String, HashMap<String, usize>)],
+    ) -> ((String, f32), HashMap<String, usize>) {
+        target_hsm_score_vec.sort_by(|b, a| a.1.partial_cmp(&b.1).unwrap());
+
+        // Get node with highest normalized score (best candidate)
+        let best_candidate: (String, f32) = target_hsm_score_vec
+            .into_iter()
+            .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .unwrap()
+            .clone();
+
+        let best_candidate_counters = &target_hsm_hw_component_vec
+            .iter()
+            .find(|(node, _)| node.eq(&best_candidate.0))
+            .unwrap()
+            .1;
+
+        /* println!(
+            "Best candidate is '{}' with a normalized score of {} with alphas {:?}",
+            best_candidate.0, highest_normalized_score, best_candidate_counters
+        ); */
+
+        (best_candidate, best_candidate_counters.clone())
+    }
+
     pub fn get_best_candidate_to_upscale_migrate(
         parent_hsm_score_vec: &mut [(String, isize)],
         parent_hsm_hw_component_vec: &[(String, HashMap<String, usize>)],
@@ -1055,18 +1263,186 @@ pub mod utils {
         (best_candidate, best_candidate_counters.clone())
     }
 
-    pub fn calculate_scores(
+    // Calculates node score based on hw component density
+    pub fn calculate_node_density_score(
+        node_hw_component_count_hashmap_target_hsm_vec: &Vec<(String, HashMap<String, usize>)>,
+    ) -> HashMap<String, usize> {
+        let mut target_hsm_density_score_hashmap: HashMap<String, usize> = HashMap::new();
+        for target_hsm_group_hw_component in node_hw_component_count_hashmap_target_hsm_vec {
+            let node_density_score = target_hsm_group_hw_component.1.values().sum();
+            target_hsm_density_score_hashmap
+                .insert(target_hsm_group_hw_component.clone().0, node_density_score);
+        }
+
+        target_hsm_density_score_hashmap
+    }
+
+    // Given a node hw conter, user request hw conter and HSM hw counters, calculate if it is save
+    // to remove this node form the HSM and still be able to fullful the user request using the
+    // rest of nodes in the HSM group. This method is used to validate if HSM group still can
+    // fulfill user request after removing a node.
+    pub fn can_node_be_removed_without_violating_user_request(
+        node_hw_component_count: &HashMap<String, usize>,
+        user_request_hw_components_count_hashmap: &HashMap<String, usize>,
+        target_hsm_node_hw_components_count_hashmap: &HashMap<String, usize>,
+    ) -> bool {
+        println!(
+            "DEBUG - user_request_hw_components_count_hashmap: {:?}",
+            user_request_hw_components_count_hashmap
+        );
+        for (hw_component, requested_qty) in user_request_hw_components_count_hashmap {
+            if let Some(node_hw_component_count) = node_hw_component_count.get(hw_component) {
+                let target_hsm_hw_component_count: usize =
+                    *target_hsm_node_hw_components_count_hashmap
+                        .get(hw_component)
+                        .unwrap();
+                println!(
+                    "DEBUG - User requested hw component {} Node qty {} HSM qty {}",
+                    hw_component, node_hw_component_count, target_hsm_hw_component_count
+                );
+                if target_hsm_hw_component_count - node_hw_component_count < *requested_qty {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// Calculates a normalized score for each hw component in HSM group based on component
+    /// scarcity.
+    pub fn calculate_hsm_hw_component_normalized_node_density_score(
+        target_hsm_node_hw_component_count_hashmap_vec: &Vec<(String, HashMap<String, usize>)>,
+        hw_components_to_migrate_from_one_hsm_to_another_hsm: &HashMap<String, isize>,
+        hw_component_count_requested_by_user: &HashMap<String, usize>,
+        target_hsm_hw_component_normalized_scores: &HashMap<String, f32>,
+        target_hsm_hw_component_count_hashmap: &HashMap<String, usize>,
+        hsm_hw_component_count: usize,
+    ) -> Vec<(String, f32)> {
+        println!(
+            "DEBUG - node_hw_component_count_hashmap_target_hsm_vec: {:?}",
+            target_hsm_node_hw_component_count_hashmap_vec
+        );
+
+        println!(
+            "DEBUG - hw_components_to_migrate_from_one_hsm_to_another_hsm: {:?}",
+            hw_components_to_migrate_from_one_hsm_to_another_hsm
+        );
+
+        println!(
+            "DEBUG - hsm_hw_component_count: {:?}",
+            hsm_hw_component_count
+        );
+
+        let mut target_hsm_density_score_hashmap: HashMap<String, f32> = HashMap::new();
+
+        for (xname, node_hw_component_count) in target_hsm_node_hw_component_count_hashmap_vec {
+            let mut node_hw_normalize_score = 0f32;
+
+            println!(
+                "DEBUG - #### NODE '{}' counters: {:?} ####",
+                xname, node_hw_component_count
+            );
+            if !can_node_be_removed_without_violating_user_request(
+                node_hw_component_count,
+                hw_component_count_requested_by_user,
+                target_hsm_hw_component_count_hashmap,
+            ) {
+                // cannot remove this hw component, otherwise we won't have enough
+                // resources to fullfil user request
+                println!("DEBUG - cannot remove node '{}', otherwise we will violate user request, updating score to negative one", xname);
+                node_hw_normalize_score = f32::MIN;
+            } else {
+                for (hw_component, qty) in node_hw_component_count {
+                    let hw_component_normalize_score: f32 =
+                        if hw_components_to_migrate_from_one_hsm_to_another_hsm
+                            .get(hw_component)
+                            .is_some_and(|qty| qty.abs() > 0)
+                        {
+                            let hsm_hw_component_count_hashmap: HashMap<String, usize> =
+                                calculate_hsm_hw_component_count(
+                                    target_hsm_node_hw_component_count_hashmap_vec,
+                                );
+                            // println!("DEBUG - hw component '{}' needs to go", hw_component);
+                            // found hw component that needs to move out
+                            let quantity_yet_to_go =
+                                hw_components_to_migrate_from_one_hsm_to_another_hsm
+                                    .get(hw_component)
+                                    .unwrap()
+                                    .abs() as usize;
+                            // println!(
+                            //     "DEBUG - hw component: {}, quantity node has: {}, quantity to go: {}",
+                            //     hw_component, *qty as f32, quantity_yet_to_go
+                            // );
+                            if can_node_be_removed_without_violating_user_request(
+                                node_hw_component_count,
+                                hw_component_count_requested_by_user,
+                                target_hsm_hw_component_count_hashmap,
+                            ) {
+                                // found hw component in hsm goup with enough quantity to remove
+                                /* println!(
+                                    "DEBUG - qty: {}, hsm_hw_component_count: {}",
+                                    qty, hsm_hw_component_count
+                                ); */
+                                100 as f32
+                                    - (*target_hsm_hw_component_normalized_scores
+                                        .get(hw_component)
+                                        .unwrap())
+                            } else {
+                                // cannot remove this hw component, otherwise we won't have enough
+                                // resources to fullfil user request
+                                println!("DEBUG - cannot remove hw component '{}', otherwise we will violate user request, updating score to negative one", hw_component);
+                                -(100 as f32
+                                    - (*target_hsm_hw_component_normalized_scores
+                                        .get(hw_component)
+                                        .unwrap()))
+                            }
+                        } else {
+                            // found a hw component the user is not asking for
+                            println!(
+                                "DEBUG - hw component: {} to look for in {:?}",
+                                hw_component, target_hsm_hw_component_normalized_scores
+                            );
+                            -(100 as f32
+                                - (*target_hsm_hw_component_normalized_scores
+                                    .get(hw_component)
+                                    .unwrap()))
+                        };
+
+                    println!(
+                        "DEBUG - node: {}, hw component: {}, normalized score: {}",
+                        xname, hw_component, hw_component_normalize_score
+                    );
+                    node_hw_normalize_score += hw_component_normalize_score;
+                }
+            }
+
+            target_hsm_density_score_hashmap.insert(xname.to_string(), node_hw_normalize_score);
+        }
+
+        let target_hsm_normalized_density_score_tuple_vec: Vec<(String, f32)> =
+            target_hsm_density_score_hashmap
+                .into_iter()
+                .map(|(k, v)| (k, v))
+                .collect();
+
+        target_hsm_normalized_density_score_tuple_vec
+    }
+
+    pub fn calculate_hsm_hw_component_node_scores(
         hsm_group_hw_component_counter_vec: &Vec<(String, HashMap<String, usize>)>,
         hw_components_to_migrate_from_one_hsm_to_another_hsm: &HashMap<String, isize>,
     ) -> Vec<(String, isize)> {
         let mut target_hsm_score_vec: Vec<(String, isize)> = Vec::new();
 
-        for (node, hw_components) in hsm_group_hw_component_counter_vec {
-            // println!("# Processing node: ({},{:?})", node, hw_components);
+        for (node, hw_components_count_hashmap) in hsm_group_hw_component_counter_vec {
+            // println!("# Processing node: ({},{:?}", node, hw_components);
 
             // Calculate node's score
             let mut score = 0;
-            for (hw_component, quantity) in hw_components {
+            for (hw_component, quantity) in hw_components_count_hashmap {
                 // IMPORTANT TO LEAVE THIS AS IT IS, WE
                 // WANT TO ITERATE THROUGH ALL HW
                 // COMPONENTS IN THE NODE TO CALCULATE A
@@ -1218,7 +1594,7 @@ pub mod utils {
     /// Returns a triple like (<xname>, <list of hw components>, <list of memory capacity>)
     /// Note: list of hw components can be either the hw componentn pattern provided by user or the
     /// description from the HSM API
-    pub async fn hsm_node_hw_profile(
+    pub async fn get_node_hw_component_count(
         shasta_token: String,
         shasta_base_url: String,
         shasta_root_cert: Vec<u8>,
@@ -1234,7 +1610,7 @@ pub mod utils {
         .await
         .unwrap();
 
-        let node_hw_profile = get_node_hw_properties(
+        let node_hw_profile = get_node_hw_properties_from_value(
             &node_hw_inventory_value,
             user_defined_hw_profile_vec.clone(),
         );
@@ -1242,7 +1618,8 @@ pub mod utils {
         (hsm_member.to_string(), node_hw_profile.0, node_hw_profile.1)
     }
 
-    pub fn get_hsm_hw_component_summary(
+    // Calculate/groups hw component counters filtered by user request
+    pub fn get_hsm_hw_component_count_filtered_by_user_request(
         user_defined_hw_component_vec: &Vec<String>,
         target_hsm_group_hw_component_vec: &Vec<(String, HashMap<String, usize>)>,
     ) -> HashMap<String, usize> {
@@ -1259,8 +1636,84 @@ pub mod utils {
         hsm_hw_component_count_hashmap
     }
 
-    /// Returns the properties in hw_property_list found in the node_hw_inventory_value
-    pub fn get_node_hw_properties(
+    // Calculate/groups hw component counters
+    pub fn calculate_hsm_hw_component_count(
+        target_hsm_group_node_hw_component_vec: &Vec<(String, HashMap<String, usize>)>,
+    ) -> HashMap<String, usize> {
+        let mut hsm_hw_component_count_hashmap = HashMap::new();
+
+        for (_xname, node_hw_component_count_hashmap) in target_hsm_group_node_hw_component_vec {
+            for (hw_component, &qty) in node_hw_component_count_hashmap {
+                hsm_hw_component_count_hashmap
+                    .entry(hw_component.to_string())
+                    .and_modify(|qty_aux| *qty_aux += qty)
+                    .or_insert(qty);
+            }
+        }
+
+        hsm_hw_component_count_hashmap
+    }
+
+    // Given a list of tuples (xname, list of hw components qty hasmap), this function will return
+    // the list of hw components wih their quantity normalized in within the hsm group
+    pub fn calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec(
+        hsm_node_hw_component_count_vec: &Vec<(String, HashMap<String, usize>)>,
+        total_number_hw_components: usize,
+    ) -> HashMap<String, f32> {
+        let mut hsm_hw_component_count_hashmap: HashMap<String, usize> = HashMap::new();
+
+        for (_xname, node_hw_component_count_hashmap) in hsm_node_hw_component_count_vec {
+            for (hw_component, qty) in node_hw_component_count_hashmap {
+                hsm_hw_component_count_hashmap
+                    .entry(hw_component.to_string())
+                    .and_modify(|qty_aux| *qty_aux += qty)
+                    .or_insert(*qty);
+            }
+        }
+
+        calculate_hsm_hw_component_normalized_density_score_from_hsm_hw_component_count_hashmap(
+            hsm_hw_component_count_hashmap,
+            total_number_hw_components,
+        )
+    }
+
+    // Given the list of hw components qty in a node, this function will return the list of hw
+    // components with their quantity normalized within the node
+    pub fn calculate_hsm_hw_component_normalized_density_score_from_hsm_hw_component_count_hashmap(
+        hsm_hw_component_count_hashmap: HashMap<String, usize>,
+        total_number_hw_components: usize,
+    ) -> HashMap<String, f32> {
+        /* let total_number_hw_components = hsm_hw_component_count_hashmap
+        .iter()
+        .fold(0, |acc, (_hw_component, qty)| acc + qty); */
+
+        /* let mut hsm_hw_component_normalized_score_hashmap: HashMap<String, f32> = HashMap::new();
+
+        for (hw_component, qty) in hsm_hw_component_count_hashmap {
+            hsm_hw_component_normalized_score_hashmap
+                .entry(hw_component.to_string())
+                .and_modify(|qty_aux| {
+                    *qty_aux = *qty_aux as f32 / total_number_hw_components as f32
+                })
+                .or_insert(qty as f32 / total_number_hw_components as f32);
+        }
+
+        hsm_hw_component_normalized_score_hashmap */
+
+        hsm_hw_component_count_hashmap
+            .iter()
+            .map(|(hw_component, qty)| {
+                (
+                    hw_component.to_string(),
+                    (*qty * 100) as f32 / total_number_hw_components as f32,
+                )
+            })
+            .collect()
+    }
+
+    /// Returns the properties in hw_property_list found in the node_hw_inventory_value which is
+    /// HSM hardware inventory API json response
+    pub fn get_node_hw_properties_from_value(
         node_hw_inventory_value: &Value,
         hw_component_pattern_list: Vec<String>,
     ) -> (Vec<String>, Vec<u64>) {
@@ -1316,6 +1769,25 @@ pub mod utils {
         (node_hw_component_pattern_vec, memory_vec)
     }
 
+    /// Calculates greatest common factor or lowest common multiple
+    pub fn calculate_lcm(numbers: &Vec<u64>) -> u64 {
+        let mut lcm = u64::MAX;
+        for number in numbers {
+            let factors = (1..number + 1)
+                .into_iter()
+                .filter(|&x| number % x == 0)
+                .collect::<Vec<u64>>();
+
+            println!("Prime factors for {} --> {:?}", number, factors);
+
+            if factors.last().is_some() && factors.last().unwrap() < &lcm {
+                lcm = *factors.last().unwrap();
+            }
+        }
+
+        lcm
+    }
+
     pub fn print_table(
         user_defined_hw_componet_vec: &Vec<String>,
         hsm_hw_pattern_vec: &[(String, HashMap<String, usize>)],
@@ -1323,7 +1795,10 @@ pub mod utils {
         hsm_score_vec: &[(String, isize)],
     ) {
         /* println!("DEBUG - hsm_hw_pattern_vec:\n{:?}", hsm_hw_pattern_vec);
-        println!("DEBUG - hsm_density_score_hashmap:\n{:?}", hsm_density_score_hashmap); */
+        println!(
+            "DEBUG - hsm_density_score_hashmap:\n{:?}",
+            hsm_density_score_hashmap
+        ); */
 
         let hsm_hw_component_vec: Vec<String> = hsm_hw_pattern_vec
             .iter()
@@ -1426,6 +1901,129 @@ pub mod utils {
 
         println!("{table}\n");
     }
+
+    pub fn print_table_f32_score(
+        user_defined_hw_componet_vec: &Vec<String>,
+        hsm_hw_pattern_vec: &[(String, HashMap<String, usize>)],
+        hsm_density_score_hashmap: &HashMap<String, usize>,
+        hsm_score_vec: &[(String, f32)],
+    ) {
+        /* println!("DEBUG - hsm_hw_pattern_vec:\n{:?}", hsm_hw_pattern_vec);
+        println!(
+            "DEBUG - hsm_density_score_hashmap:\n{:?}",
+            hsm_density_score_hashmap
+        ); */
+
+        let hsm_hw_component_vec: Vec<String> = hsm_hw_pattern_vec
+            .iter()
+            .flat_map(|(_xname, node_pattern_hashmap)| node_pattern_hashmap.keys().cloned())
+            .collect();
+
+        let mut all_hw_component_vec =
+            [hsm_hw_component_vec, user_defined_hw_componet_vec.to_vec()].concat();
+
+        all_hw_component_vec.sort();
+        all_hw_component_vec.dedup();
+
+        // println!("DEBUG - all_hw_component_vec : {:?}", all_hw_component_vec);
+
+        let mut table = comfy_table::Table::new();
+
+        table.set_header(
+            [
+                vec!["Node".to_string()],
+                all_hw_component_vec.clone(),
+                vec!["Density Score".to_string()],
+                vec!["Score".to_string()],
+            ]
+            .concat(),
+        );
+
+        for (xname, node_pattern_hashmap) in hsm_hw_pattern_vec {
+            // println!("node_pattern_hashmap: {:?}", node_pattern_hashmap);
+
+            let mut row: Vec<comfy_table::Cell> = Vec::new();
+            // Node xname table cell
+            row.push(
+                comfy_table::Cell::new(xname.clone())
+                    .set_alignment(comfy_table::CellAlignment::Center),
+            );
+            // User hw components table cell
+            for hw_component in &all_hw_component_vec {
+                if user_defined_hw_componet_vec.contains(&hw_component)
+                    && node_pattern_hashmap.contains_key(hw_component)
+                {
+                    let counter = node_pattern_hashmap.get(hw_component).unwrap();
+                    row.push(
+                        comfy_table::Cell::new(format!("✅ ({})", counter,))
+                            .fg(Color::Green)
+                            .set_alignment(comfy_table::CellAlignment::Center),
+                    );
+                } else if node_pattern_hashmap.contains_key(hw_component) {
+                    let counter = node_pattern_hashmap.get(hw_component).unwrap();
+                    row.push(
+                        comfy_table::Cell::new(format!("\u{26A0} ({})", counter))
+                            .fg(Color::Yellow)
+                            .set_alignment(comfy_table::CellAlignment::Center),
+                    );
+                } else {
+                    // node does not contain hardware but it was requested by the user
+                    row.push(
+                        comfy_table::Cell::new("❌".to_string())
+                            .set_alignment(comfy_table::CellAlignment::Center),
+                    );
+                }
+            }
+            /* for user_defined_hw_component in user_defined_hw_componet_vec {
+                if node_pattern_hashmap.contains_key(user_defined_hw_component) {
+                    let counter = node_pattern_hashmap.get(user_defined_hw_component).unwrap();
+                    row.push(
+                        comfy_table::Cell::new(format!("✅ ({})", counter,))
+                            .fg(Color::Green)
+                            .set_alignment(comfy_table::CellAlignment::Center),
+                    );
+                } else {
+                    row.push(
+                        comfy_table::Cell::new("❌".to_string())
+                            .set_alignment(comfy_table::CellAlignment::Center),
+                    );
+                }
+            } */
+            // Node density score table cell
+            row.push(
+                comfy_table::Cell::new(hsm_density_score_hashmap.get(xname).unwrap())
+                    .set_alignment(comfy_table::CellAlignment::Center),
+            );
+            // Node score table cell
+            let node_score = hsm_score_vec
+                .iter()
+                .find(|(node_name, _)| node_name.eq(xname))
+                .unwrap()
+                .1;
+            let node_score_table_cell = if node_score <= 0f32 {
+                comfy_table::Cell::new(node_score)
+                    .set_alignment(comfy_table::CellAlignment::Center)
+                    .fg(Color::Red)
+            } else {
+                comfy_table::Cell::new(node_score)
+                    .set_alignment(comfy_table::CellAlignment::Center)
+                    .fg(Color::Green)
+            };
+            row.push(node_score_table_cell);
+            table.add_row(row);
+        }
+
+        println!("{table}\n");
+    }
+
+    pub fn calculate_hsm_total_number_hw_components(
+        target_hsm_hw_component_count_vec: &Vec<(String, HashMap<String, usize>)>,
+    ) -> usize {
+        target_hsm_hw_component_count_vec
+            .into_iter()
+            .flat_map(|(_node, hw_component_hashmap)| hw_component_hashmap.values())
+            .sum()
+    }
 }
 
 #[tokio::test]
@@ -1436,6 +2034,9 @@ pub async fn test_memory_capacity() {
         "cscs",  /*organization*/
         "manta", /*application*/
     );
+
+    // DEBUG
+    let hsm_name = "zinal";
 
     let mut path_to_manta_configuration_file = PathBuf::from(project_dirs.unwrap().config_dir());
 
@@ -1478,18 +2079,18 @@ pub async fn test_memory_capacity() {
             .await
             .unwrap();
 
-    /* let hsm_group_vec =
-    hsm::http_client::get_all_hsm_groups(&shasta_token, &shasta_base_url, &shasta_root_cert)
-        .await
-        .unwrap(); */
-    let hsm_group_vec = hsm::http_client::get_hsm_group_vec(
+    let hsm_group_vec =
+        hsm::http_client::get_all_hsm_groups(&shasta_token, &shasta_base_url, &shasta_root_cert)
+            .await
+            .unwrap();
+    /* let hsm_group_vec = hsm::http_client::get_hsm_group_vec(
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,
-        Some(&"zinal".to_string()),
+        Some(&hsm_name.to_string()),
     )
     .await
-    .unwrap();
+    .unwrap(); */
 
     let mut node_hsm_groups_hw_inventory_map: HashMap<&str, (Vec<&str>, Vec<String>, Vec<u64>)> =
         HashMap::new();
@@ -1527,7 +2128,7 @@ pub async fn test_memory_capacity() {
                     "DEBUG - fetching hw components for node {} in hsm group {}",
                     member, hsm_group_name
                 );
-                let hw_inventory = hsm_node_hw_profile(
+                let hw_inventory = get_node_hw_component_count(
                     shasta_token.to_string(),
                     shasta_base_url.to_string(),
                     shasta_root_cert.clone(),
@@ -1546,12 +2147,12 @@ pub async fn test_memory_capacity() {
 
     println!("\n************************************\nDEBUG - HW COMPONENT SUMMARY:\n",);
 
-    let mut query_lcm = u64::MAX;
+    let mut hsm_memory_capacity_lcm = u64::MAX;
 
     for (node, hsm_groups_hw_inventory) in node_hsm_groups_hw_inventory_map {
-        let node_lcm = calculate_lcm(&hsm_groups_hw_inventory.2);
-        if node_lcm < query_lcm {
-            query_lcm = node_lcm;
+        let node_memory_capacity_lcm = calculate_lcm(&hsm_groups_hw_inventory.2);
+        if node_memory_capacity_lcm < hsm_memory_capacity_lcm {
+            hsm_memory_capacity_lcm = node_memory_capacity_lcm;
         }
         println!(
             "DEBUG - node {} hwm groups {:?} hw inventory {:?} memory dimms capacity {:?} lcm {}",
@@ -1559,28 +2160,137 @@ pub async fn test_memory_capacity() {
             hsm_groups_hw_inventory.0,
             hsm_groups_hw_inventory.1,
             hsm_groups_hw_inventory.2,
-            node_lcm
+            node_memory_capacity_lcm
         );
     }
 
-    println!("Query LCM: {}", query_lcm);
+    println!("Query LCM: {}", hsm_memory_capacity_lcm);
 }
 
-/// Calculates greatest common factor or lowest common multiple
-fn calculate_lcm(numbers: &Vec<u64>) -> u64 {
-    let mut lcm = u64::MAX;
-    for number in numbers {
-        let factors = (1..number + 1)
-            .into_iter()
-            .filter(|&x| number % x == 0)
-            .collect::<Vec<u64>>();
+pub fn test_hsm_hw_management() {
+    let hsm_zinal_hw_counters = vec![
+        (
+            "x1001c1s5b0n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s5b0n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s5b1n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s5b1n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s6b0n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 15)]),
+        ),
+        (
+            "x1001c1s6b0n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s6b1n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s6b1n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s7b0n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s7b0n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s7b1n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s7b1n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1005c0s4b0n0",
+            HashMap::from([("a100", 4), ("epyc", 1), ("Memory 16384", 32)]),
+        ),
+        (
+            "x1005c0s4b0n1",
+            HashMap::from([("epyc", 1), ("Memory 16384", 32), ("a100", 4)]),
+        ),
+        (
+            "x1006c1s4b0n0",
+            HashMap::from([("instinct", 8), ("Memory 16384", 32), ("epyc", 1)]),
+        ),
+        (
+            "x1006c1s4b1n0",
+            HashMap::from([("instinct", 8), ("epyc", 1), ("Memory 16384", 32)]),
+        ),
+    ];
 
-        println!("Prime factors for {} --> {:?}", number, factors);
-
-        if factors.last().is_some() && factors.last().unwrap() < &lcm {
-            lcm = *factors.last().unwrap();
-        }
-    }
-
-    lcm
+    let hsm_nodes_free_hw_conters = vec![
+        (
+            "x1000c1s7b0n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1000c1s7b0n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1000c1s7b1n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1000c1s7b1n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s1b0n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s1b0n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s1b1n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s1b1n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s2b0n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s2b0n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s4b0n0",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+        (
+            "x1001c1s4b0n1",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s4b1n0",
+            HashMap::from([("epyc", 2), ("Memory 16384", 16)]),
+        ),
+        (
+            "x1001c1s4b1n1",
+            HashMap::from([("Memory 16384", 16), ("epyc", 2)]),
+        ),
+    ];
 }
