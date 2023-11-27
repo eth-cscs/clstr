@@ -12,8 +12,8 @@ publish = false # cargo dist --> Avoid publishing to crates.io
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# mesa = "0.16.3"
-mesa = { path = "../mesa" } # Only for development purposes
+mesa = "0.17.2"
+# mesa = { path = "../mesa" } # Only for development purposes
 prime-factor = "0.4.4"
 strum = "0.25.0"
 strum_macros = "0.25"

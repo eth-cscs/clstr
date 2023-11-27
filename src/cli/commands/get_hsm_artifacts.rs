@@ -259,8 +259,6 @@ pub fn print_table_f32_score(
         [
             vec!["Node".to_string()],
             all_hw_component_vec.clone(),
-            vec!["Density Score".to_string()],
-            vec!["Score".to_string()],
         ]
         .concat(),
     );
@@ -314,27 +312,6 @@ pub fn print_table_f32_score(
                 );
             }
         } */
-        // Node density score table cell
-        row.push(
-            comfy_table::Cell::new(hsm_density_score_hashmap.get(xname).unwrap_or(&0))
-                .set_alignment(comfy_table::CellAlignment::Center),
-        );
-        // Node score table cell
-        let node_score = hsm_score_vec
-            .iter()
-            .find(|(node_name, _)| node_name.eq(xname))
-            .unwrap_or(&(xname.to_string(), 0f32))
-            .1;
-        let node_score_table_cell = if node_score <= 0f32 {
-            comfy_table::Cell::new(node_score)
-                .set_alignment(comfy_table::CellAlignment::Center)
-                .fg(Color::Red)
-        } else {
-            comfy_table::Cell::new(node_score)
-                .set_alignment(comfy_table::CellAlignment::Center)
-                .fg(Color::Green)
-        };
-        row.push(node_score_table_cell);
         table.add_row(row);
     }
 
