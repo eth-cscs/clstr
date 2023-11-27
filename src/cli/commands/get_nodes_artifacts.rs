@@ -27,12 +27,12 @@ pub enum ArtifactType {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NodeSummary {
-    xname: String,
-    r#type: String,
-    processors: Vec<ArtifactSummary>,
-    memory: Vec<ArtifactSummary>,
-    node_accels: Vec<ArtifactSummary>,
-    node_hsn_nics: Vec<ArtifactSummary>,
+    pub xname: String,
+    pub r#type: String,
+    pub processors: Vec<ArtifactSummary>,
+    pub memory: Vec<ArtifactSummary>,
+    pub node_accels: Vec<ArtifactSummary>,
+    pub node_hsn_nics: Vec<ArtifactSummary>,
 }
 
 impl NodeSummary {
@@ -80,9 +80,9 @@ impl NodeSummary {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ArtifactSummary {
-    xname: String,
-    r#type: ArtifactType,
-    info: Option<String>,
+    pub xname: String,
+    pub r#type: ArtifactType,
+    pub info: Option<String>,
 }
 
 impl ArtifactSummary {

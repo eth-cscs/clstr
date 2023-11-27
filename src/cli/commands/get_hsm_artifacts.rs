@@ -1,9 +1,19 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    cell::Cell,
+    collections::{HashMap, HashSet},
+    ops::Deref,
+    sync::Arc,
+    time::Instant,
+};
 
+use comfy_table::Table;
 use mesa::shasta::hsm;
 use tokio::sync::Semaphore;
 
-use crate::cli::commands::get_nodes_artifacts::{self, NodeSummary};
+use crate::cli::commands::{
+    apply_hsm_based_on_component_quantity::utils::print_table_f32_score,
+    get_nodes_artifacts::{self, NodeSummary},
+};
 
 pub async fn exec(
     shasta_token: &str,
@@ -32,7 +42,7 @@ pub async fn exec(
     let hsm_group_target_members =
         hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
 
-    let mut node_summary_vec = Vec::new();
+    let mut hsm_summary = Vec::new();
 
     let start_total = Instant::now();
 
@@ -82,7 +92,7 @@ pub async fn exec(
         if let Ok(mut node_hw_inventory) = message {
             node_hw_inventory = node_hw_inventory.pointer("/Nodes/0").unwrap().clone();
             let node_summary = NodeSummary::from_csm_value(node_hw_inventory.clone());
-            node_summary_vec.push(node_summary);
+            hsm_summary.push(node_summary);
         } else {
             log::error!("Failed procesing/fetching node hw information");
         }
@@ -91,18 +101,123 @@ pub async fn exec(
     let duration = start_total.elapsed();
 
     if output_opt.is_some() && output_opt.unwrap().eq("json") {
-        for node_summary in node_summary_vec {
+        for node_summary in &hsm_summary {
             println!("{}", serde_json::to_string_pretty(&node_summary).unwrap());
         }
     } else {
-        for node_summary in node_summary_vec {
-            get_nodes_artifacts::print_table(&[node_summary].to_vec());
-        }
+        print_table(&hsm_summary);
     }
 
     log::info!(
         "Time elapsed in http calls to get hw inventory for HSM '{}' is: {:?}",
         hsm_group_name,
         duration
+    );
+}
+
+pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
+    let mut hsm_node_hw_component_count_hashmap_vec: Vec<(String, HashMap<String, usize>)> = vec![];
+
+    let mut processor_set: HashSet<String> = HashSet::new();
+    let mut accelerator_set: HashSet<String> = HashSet::new();
+    let mut memory_set: HashSet<String> = HashSet::new();
+    let mut hsn_set: HashSet<String> = HashSet::new();
+
+    for node_summary in node_summary_vec {
+        let mut node_hw_component_count_hashmap: HashMap<String, usize> = HashMap::new();
+
+        let processor_info_vec: Vec<String> = node_summary
+            .processors
+            .iter()
+            .map(|processor| processor.info.as_ref().unwrap().clone())
+            .collect();
+
+        let mut processor_count_hashmap: HashMap<String, usize> = HashMap::new();
+        for processor_info in &processor_info_vec {
+            processor_count_hashmap
+                .entry(processor_info.to_string())
+                .and_modify(|qty| *qty += 1)
+                .or_insert(1);
+        }
+
+        let hw_component_set: HashSet<String> = processor_count_hashmap.keys().cloned().collect();
+        processor_set.extend(hw_component_set);
+        node_hw_component_count_hashmap.extend(processor_count_hashmap.clone());
+
+        let accelerator_info_vec: Vec<String> = node_summary
+            .node_accels
+            .iter()
+            .map(|node_accel| node_accel.info.as_ref().unwrap().clone())
+            .collect();
+
+        let mut accelerator_count_hashmap: HashMap<String, usize> = HashMap::new();
+        for accelerator_info in &accelerator_info_vec {
+            accelerator_count_hashmap
+                .entry(accelerator_info.to_string())
+                .and_modify(|qty| *qty += 1)
+                .or_insert(1);
+        }
+
+        let hw_component_set: HashSet<String> = accelerator_count_hashmap.keys().cloned().collect();
+        accelerator_set.extend(hw_component_set);
+        node_hw_component_count_hashmap.extend(accelerator_count_hashmap);
+
+        let memory_info_vec: Vec<String> = node_summary
+            .memory
+            .iter()
+            .map(|mem| mem.info.as_ref().unwrap_or(&"ERROR".to_string()).clone())
+            .collect();
+
+        let mut memory_count_hashmap: HashMap<String, usize> = HashMap::new();
+        for memory_info in &memory_info_vec {
+            memory_count_hashmap
+                .entry(memory_info.to_string())
+                .and_modify(|qty| *qty += 1)
+                .or_insert(1);
+        }
+
+        let hw_component_set: HashSet<String> = memory_count_hashmap.keys().cloned().collect();
+        memory_set.extend(hw_component_set);
+        node_hw_component_count_hashmap.extend(memory_count_hashmap);
+
+        let hsn_nic_info_vec: Vec<String> = node_summary
+            .node_hsn_nics
+            .iter()
+            .map(|hsn_nic| hsn_nic.info.as_ref().unwrap().clone())
+            .collect();
+
+        let mut hsn_nic_count_hashmap: HashMap<String, usize> = HashMap::new();
+        for hsn_nic_info in &hsn_nic_info_vec {
+            hsn_nic_count_hashmap
+                .entry(hsn_nic_info.to_string())
+                .and_modify(|qty| *qty += 1)
+                .or_insert(1);
+        }
+
+        let hw_component_set: HashSet<String> = hsn_nic_count_hashmap.keys().cloned().collect();
+        hsn_set.extend(hw_component_set);
+        node_hw_component_count_hashmap.extend(hsn_nic_count_hashmap);
+
+        hsm_node_hw_component_count_hashmap_vec
+            .push((node_summary.xname.clone(), node_hw_component_count_hashmap))
+    }
+
+    let headers = Vec::from_iter(
+        [
+            Vec::from_iter(processor_set),
+            Vec::from_iter(accelerator_set),
+            Vec::from_iter(memory_set),
+            Vec::from_iter(hsn_set),
+        ]
+        .concat(),
+    );
+
+    hsm_node_hw_component_count_hashmap_vec.sort_by(|a, b| a.0.cmp(&b.0));
+
+    print_table_f32_score(
+        &headers,
+        &hsm_node_hw_component_count_hashmap_vec,
+        &HashMap::new(),
+        &Vec::new(),
     );
 }
