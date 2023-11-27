@@ -6,14 +6,11 @@ use std::{
     time::Instant,
 };
 
-use comfy_table::Table;
+use comfy_table::{Color, Table};
 use mesa::shasta::hsm;
 use tokio::sync::Semaphore;
 
-use crate::cli::commands::{
-    apply_hsm_based_on_component_quantity::utils::print_table_f32_score,
-    get_nodes_artifacts::{self, NodeSummary},
-};
+use crate::cli::commands::get_nodes_artifacts::{self, NodeSummary};
 
 pub async fn exec(
     shasta_token: &str,
@@ -220,4 +217,126 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
         &HashMap::new(),
         &Vec::new(),
     );
+}
+
+pub fn calculate_hsm_total_number_hw_components(
+    target_hsm_hw_component_count_vec: &[(String, HashMap<String, usize>)],
+) -> usize {
+    target_hsm_hw_component_count_vec
+        .iter()
+        .flat_map(|(_node, hw_component_hashmap)| hw_component_hashmap.values())
+        .sum()
+}
+
+pub fn print_table_f32_score(
+    user_defined_hw_componet_vec: &[String],
+    hsm_hw_pattern_vec: &[(String, HashMap<String, usize>)],
+    hsm_density_score_hashmap: &HashMap<String, usize>,
+    hsm_score_vec: &[(String, f32)],
+) {
+    /* println!("DEBUG - hsm_hw_pattern_vec:\n{:?}", hsm_hw_pattern_vec);
+    println!(
+        "DEBUG - hsm_density_score_hashmap:\n{:?}",
+        hsm_density_score_hashmap
+    ); */
+
+    let hsm_hw_component_vec: Vec<String> = hsm_hw_pattern_vec
+        .iter()
+        .flat_map(|(_xname, node_pattern_hashmap)| node_pattern_hashmap.keys().cloned())
+        .collect();
+
+    let mut all_hw_component_vec =
+        [hsm_hw_component_vec, user_defined_hw_componet_vec.to_vec()].concat();
+
+    all_hw_component_vec.sort();
+    all_hw_component_vec.dedup();
+
+    // println!("DEBUG - all_hw_component_vec : {:?}", all_hw_component_vec);
+
+    let mut table = comfy_table::Table::new();
+
+    table.set_header(
+        [
+            vec!["Node".to_string()],
+            all_hw_component_vec.clone(),
+            vec!["Density Score".to_string()],
+            vec!["Score".to_string()],
+        ]
+        .concat(),
+    );
+
+    for (xname, node_pattern_hashmap) in hsm_hw_pattern_vec {
+        // println!("node_pattern_hashmap: {:?}", node_pattern_hashmap);
+
+        let mut row: Vec<comfy_table::Cell> = Vec::new();
+        // Node xname table cell
+        row.push(
+            comfy_table::Cell::new(xname.clone()).set_alignment(comfy_table::CellAlignment::Center),
+        );
+        // User hw components table cell
+        for hw_component in &all_hw_component_vec {
+            if user_defined_hw_componet_vec.contains(hw_component)
+                && node_pattern_hashmap.contains_key(hw_component)
+            {
+                let counter = node_pattern_hashmap.get(hw_component).unwrap();
+                row.push(
+                    comfy_table::Cell::new(format!("✅ ({})", counter,))
+                        .fg(Color::Green)
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            } else if node_pattern_hashmap.contains_key(hw_component) {
+                let counter = node_pattern_hashmap.get(hw_component).unwrap();
+                row.push(
+                    comfy_table::Cell::new(format!("\u{26A0} ({})", counter))
+                        .fg(Color::Yellow)
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            } else {
+                // node does not contain hardware but it was requested by the user
+                row.push(
+                    comfy_table::Cell::new("❌".to_string())
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            }
+        }
+        /* for user_defined_hw_component in user_defined_hw_componet_vec {
+            if node_pattern_hashmap.contains_key(user_defined_hw_component) {
+                let counter = node_pattern_hashmap.get(user_defined_hw_component).unwrap();
+                row.push(
+                    comfy_table::Cell::new(format!("✅ ({})", counter,))
+                        .fg(Color::Green)
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            } else {
+                row.push(
+                    comfy_table::Cell::new("❌".to_string())
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            }
+        } */
+        // Node density score table cell
+        row.push(
+            comfy_table::Cell::new(hsm_density_score_hashmap.get(xname).unwrap_or(&0))
+                .set_alignment(comfy_table::CellAlignment::Center),
+        );
+        // Node score table cell
+        let node_score = hsm_score_vec
+            .iter()
+            .find(|(node_name, _)| node_name.eq(xname))
+            .unwrap_or(&(xname.to_string(), 0f32))
+            .1;
+        let node_score_table_cell = if node_score <= 0f32 {
+            comfy_table::Cell::new(node_score)
+                .set_alignment(comfy_table::CellAlignment::Center)
+                .fg(Color::Red)
+        } else {
+            comfy_table::Cell::new(node_score)
+                .set_alignment(comfy_table::CellAlignment::Center)
+                .fg(Color::Green)
+        };
+        row.push(node_score_table_cell);
+        table.add_row(row);
+    }
+
+    println!("{table}\n");
 }

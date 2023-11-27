@@ -92,7 +92,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(processor_value["Type"].as_str().unwrap()).unwrap(),
             info: processor_value
                 .pointer("/PopulatedFRU/ProcessorFRUInfo/Model")
-                .and_then(|model| Some(model.as_str().unwrap().to_string())),
+                .map(|model| model.as_str().unwrap().to_string()),
         }
     }
 
@@ -103,9 +103,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(memory_value["Type"].as_str().unwrap()).unwrap(),
             info: memory_value
                 .pointer("/PopulatedFRU/MemoryFRUInfo/CapacityMiB")
-                .and_then(|capacity_mib| {
-                    Some(capacity_mib.as_number().unwrap().to_string() + " MiB")
-                }),
+                .map(|capacity_mib| capacity_mib.as_number().unwrap().to_string() + " MiB"),
         }
     }
 
@@ -115,7 +113,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(nodehsnnic_value["Type"].as_str().unwrap()).unwrap(),
             info: nodehsnnic_value
                 .pointer("/NodeHsnNicLocationInfo/Description")
-                .and_then(|description| Some(description.as_str().unwrap().to_string())),
+                .map(|description| description.as_str().unwrap().to_string()),
         }
     }
 
@@ -125,7 +123,7 @@ impl ArtifactSummary {
             r#type: ArtifactType::from_str(nodeaccel_value["Type"].as_str().unwrap()).unwrap(),
             info: nodeaccel_value
                 .pointer("/PopulatedFRU/NodeAccelFRUInfo/Model")
-                .and_then(|model| Some(model.as_str().unwrap().to_string())),
+                .map(|model| model.as_str().unwrap().to_string()),
         }
     }
 }
@@ -148,7 +146,9 @@ pub async fn exec(
     )
     .await;
 
-    let hsm_group_list = if hsm_groups_resp.is_err() {
+    let hsm_group_list = if let Ok(hsm_groups) = hsm_groups_resp {
+        hsm_groups
+    } else {
         eprintln!(
             "No HSM group {}{}{} found!",
             color::Fg(color::Red),
@@ -156,8 +156,6 @@ pub async fn exec(
             color::Fg(color::Reset)
         );
         std::process::exit(0);
-    } else {
-        hsm_groups_resp.unwrap()
     };
 
     if hsm_group_list.is_empty() {
@@ -214,7 +212,12 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(processor.xname.clone()),
                 Cell::new(processor.r#type.clone()),
-                Cell::new(processor.info.clone().unwrap_or("*** Missing info".to_string())),
+                Cell::new(
+                    processor
+                        .info
+                        .clone()
+                        .unwrap_or("*** Missing info".to_string()),
+                ),
             ]);
         }
 
@@ -223,7 +226,12 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
                 Cell::new(node_summary.xname.clone()),
                 Cell::new(memory.xname.clone()),
                 Cell::new(memory.r#type.clone()),
-                Cell::new(memory.info.clone().unwrap_or("*** Missing info".to_string())),
+                Cell::new(
+                    memory
+                        .info
+                        .clone()
+                        .unwrap_or("*** Missing info".to_string()),
+                ),
             ]);
         }
 

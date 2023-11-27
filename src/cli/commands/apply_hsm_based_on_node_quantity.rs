@@ -811,16 +811,11 @@ pub mod utils {
             .concat()
             .to_lowercase();
 
-        for pattern_hw_inv_vec in hw_property_list {
-            if pattern_hw_inv_vec
+        hw_property_list.into_iter().find(|pattern_hw_inv_vec| {
+            pattern_hw_inv_vec
                 .iter()
                 .all(|pattern| processor_and_accelerator_concat.contains(pattern))
-            {
-                return Some(pattern_hw_inv_vec);
-            }
-        }
-
-        None
+        })
     }
 
     pub fn get_list_processor_model_from_hw_inventory_value(
