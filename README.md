@@ -2,11 +2,11 @@
 
 # CLSTR
 
-Cli based to manage HSM groups. The integration with CSM is provided by [mesa](https://github.com/eth-cscs/mesa)
+Cli to manage HSM groups. The integration with CSM is provided by [mesa](https://github.com/eth-cscs/mesa)
 
 # Introduction
 
-Clstr works around the concept of resurce pools which is a group of hardware components that can be allocated to a tenant, workload, etc. A resource pool can be also called a cluster or a HSM group.
+Clstr works around the concept of ***resurce pools*** which is a group of hardware components allocated to a tenant, workload, etc. A ***resource pool*** can also be called a ***vcluster*** or a ***HSM group***.
 
 ## Examples
 
@@ -101,6 +101,7 @@ $ clstr get nodes artifacts`` x1001c1s6b0n0 zinal
 ### Upscale or downscale a pool or resources
 
 We need 2 pool of resources (target and parent) for clstr to work, we correlated a pool of resources with a CSM group. Clstr then will move all resources in target to parent, then allocate as much resources as the user expect back to the target hsm group.
+By default parent HSM group is ***nodes_free*** although the code is prepared to manage a different one dedicated to a tenant.
 
 Based on the example above, we now want to downscale the HSM group zinal to:
 
