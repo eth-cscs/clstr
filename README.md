@@ -54,7 +54,7 @@ $ clstr get hsm artifacts zinal
 ### Get hardware resources of a node
 
 ```
-$ clstr get nodes artifacts`` x1001c1s6b0n0 zinal
+$ clstr get nodes artifacts x1001c1s6b0n0 zinal
 +---------------+------------------+----------------+------------------------------------+
 | Node XName    | Component XName  | Component Type | Component Info                     |
 +========================================================================================+
