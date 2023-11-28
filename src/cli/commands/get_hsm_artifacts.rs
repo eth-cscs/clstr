@@ -255,13 +255,7 @@ pub fn print_table_f32_score(
 
     let mut table = comfy_table::Table::new();
 
-    table.set_header(
-        [
-            vec!["Node".to_string()],
-            all_hw_component_vec.clone(),
-        ]
-        .concat(),
-    );
+    table.set_header([vec!["Node".to_string()], all_hw_component_vec.clone()].concat());
 
     for (xname, node_pattern_hashmap) in hsm_hw_pattern_vec {
         // println!("node_pattern_hashmap: {:?}", node_pattern_hashmap);
@@ -273,20 +267,24 @@ pub fn print_table_f32_score(
         );
         // User hw components table cell
         for hw_component in &all_hw_component_vec {
-            if user_defined_hw_componet_vec.contains(hw_component)
+            if hw_component.to_uppercase().contains("ERROR")
+                && node_pattern_hashmap
+                    .get(hw_component)
+                    .is_some_and(|counter| *counter > 0)
+            {
+                let counter = node_pattern_hashmap.get(hw_component).unwrap();
+                row.push(
+                    comfy_table::Cell::new(format!("⚠️  ({})", counter))
+                        .fg(Color::Yellow)
+                        .set_alignment(comfy_table::CellAlignment::Center),
+                );
+            } else if user_defined_hw_componet_vec.contains(hw_component)
                 && node_pattern_hashmap.contains_key(hw_component)
             {
                 let counter = node_pattern_hashmap.get(hw_component).unwrap();
                 row.push(
                     comfy_table::Cell::new(format!("✅ ({})", counter,))
                         .fg(Color::Green)
-                        .set_alignment(comfy_table::CellAlignment::Center),
-                );
-            } else if node_pattern_hashmap.contains_key(hw_component) {
-                let counter = node_pattern_hashmap.get(hw_component).unwrap();
-                row.push(
-                    comfy_table::Cell::new(format!("\u{26A0} ({})", counter))
-                        .fg(Color::Yellow)
                         .set_alignment(comfy_table::CellAlignment::Center),
                 );
             } else {

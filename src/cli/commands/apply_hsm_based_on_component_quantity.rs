@@ -2173,7 +2173,8 @@ pub mod utils {
                 } else if node_pattern_hashmap.contains_key(hw_component) {
                     let counter = node_pattern_hashmap.get(hw_component).unwrap();
                     row.push(
-                        comfy_table::Cell::new(format!("\u{26A0} ({})", counter))
+                        comfy_table::Cell::new(format!("⚠️ ({})", counter)) // NOTE: emojis
+                        // can also be printed using unicode like \u{26A0}
                             .fg(Color::Yellow)
                             .set_alignment(comfy_table::CellAlignment::Center),
                     );
