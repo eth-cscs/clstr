@@ -113,7 +113,7 @@ Clstr cluster pattern tries to simplify the way to describe hw components in a c
 
 > `cluster name`:`hw component`:`quantity`(:`hw component`:`quantity`)*
 
-The `<hw component>` is a string which clst is going to look for across all the hw components in either the target or parent HSM group, if works as a very simplified fuzzy finder.
+The `<hw component>` is a string which clst is going to look for across all the hw components in either the target or parent HSM group, if works as a very simplified fuzzy finder. Memory is the exception, if user wants to specify the amount of memory they desire in their cluster, the hw component pattern must indicate `memory`:`quantity` where total memory allocated should be bigger than `16GB * quantity`.
 
 Note: cluster pattern does not reflect compute nodes but the overall number of hw components you want in your cluster, this is important because a node with `NVIDIA_A100-SXM4-80GB` has 4 of them thefore if the user specifies `a100:2`, he/she will get 4 because it is the minimum a node can provide.
 
