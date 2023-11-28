@@ -779,6 +779,16 @@ pub async fn exec(
     );
 
     println!(
+        "DEBUG - SOL - Target HSM '{}' members: {}",
+        target_hsm_group_name,
+        hsm_target_node_hw_component_count_vec
+            .into_iter()
+            .map(|node_hw_component| node_hw_component.0)
+            .collect::<Vec<String>>()
+            .join(", ")
+    );
+
+    println!(
         "DEBUG - SOL - user_defined_hw_component_count_hashmap: {:?}",
         user_defined_hw_component_count_hashmap
     );
