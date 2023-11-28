@@ -214,8 +214,6 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
     print_table_f32_score(
         &headers,
         &hsm_node_hw_component_count_hashmap_vec,
-        &HashMap::new(),
-        &Vec::new(),
     );
 }
 
@@ -230,9 +228,7 @@ pub fn calculate_hsm_total_number_hw_components(
 
 pub fn print_table_f32_score(
     user_defined_hw_componet_vec: &[String],
-    hsm_hw_pattern_vec: &[(String, HashMap<String, usize>)],
-    hsm_density_score_hashmap: &HashMap<String, usize>,
-    hsm_score_vec: &[(String, f32)],
+    hsm_node_hw_pattern_vec: &[(String, HashMap<String, usize>)],
 ) {
     /* println!("DEBUG - hsm_hw_pattern_vec:\n{:?}", hsm_hw_pattern_vec);
     println!(
@@ -240,7 +236,7 @@ pub fn print_table_f32_score(
         hsm_density_score_hashmap
     ); */
 
-    let hsm_hw_component_vec: Vec<String> = hsm_hw_pattern_vec
+    let hsm_hw_component_vec: Vec<String> = hsm_node_hw_pattern_vec
         .iter()
         .flat_map(|(_xname, node_pattern_hashmap)| node_pattern_hashmap.keys().cloned())
         .collect();
@@ -257,7 +253,7 @@ pub fn print_table_f32_score(
 
     table.set_header([vec!["Node".to_string()], all_hw_component_vec.clone()].concat());
 
-    for (xname, node_pattern_hashmap) in hsm_hw_pattern_vec {
+    for (xname, node_pattern_hashmap) in hsm_node_hw_pattern_vec {
         // println!("node_pattern_hashmap: {:?}", node_pattern_hashmap);
 
         let mut row: Vec<comfy_table::Cell> = Vec::new();

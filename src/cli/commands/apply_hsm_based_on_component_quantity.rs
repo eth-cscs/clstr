@@ -3,13 +3,16 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::Semaphore;
 
 use crate::{
-    cli::commands::apply_hsm_based_on_component_quantity::utils::{
-        calculate_all_deltas, calculate_hsm_hw_component_count,
-        calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec,
-        calculate_hsm_hw_component_normalized_node_density_score_downscale,
-        calculate_hsm_total_number_hw_components, calculate_lcm, calculate_node_density_score,
-        downscale_node_migration, get_hsm_hw_component_count_filtered_by_user_request,
-        get_node_hw_component_count, upscale_node_migration,
+    cli::commands::{
+        apply_hsm_based_on_component_quantity::utils::{
+            calculate_all_deltas, calculate_hsm_hw_component_count,
+            calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec,
+            calculate_hsm_hw_component_normalized_node_density_score_downscale,
+            calculate_hsm_total_number_hw_components, calculate_lcm, calculate_node_density_score,
+            downscale_node_migration, get_hsm_hw_component_count_filtered_by_user_request,
+            get_node_hw_component_count, upscale_node_migration,
+        },
+        get_hsm_artifacts::print_table_f32_score,
     },
     common,
     shasta::hsm,
@@ -519,14 +522,14 @@ pub async fn exec(
     ); */
 
     // Filter user request patterns with the hw components received from HSM hardware inventory
-    println!(
+    /* println!(
         "DEBUG - user_defined_hw_component_count_hashmap: {:?}",
         user_defined_hw_component_count_hashmap
     );
     println!(
         "DEBUG - target_parent_hsm_hw_component_count_hashmap: {:?}",
         target_parent_hsm_hw_component_count_hashmap
-    );
+    ); */
     user_defined_hw_component_count_hashmap.retain(|hw_component, _qty| {
         target_parent_hsm_hw_component_count_hashmap.contains_key(hw_component)
     });
@@ -734,10 +737,33 @@ pub async fn exec(
         &target_parent_hsm_hw_component_normalized_scores_hashmap,
     );
 
+    // Sort target HSM group details
+    let mut hsm_target_node_hw_component_count_vec =
+        hw_component_counters_to_move_out_from_parent_hsm.clone();
+
+    hsm_target_node_hw_component_count_vec.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // Sort parent HSM group details
+    target_parent_hsm_node_hw_component_count_vec.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
     /* println!(
         "DEBUG - hw_component_counters_to_move_out_from_parent_hsm: {:?}",
         hw_component_counters_to_move_out_from_parent_hsm
     ); */
+
+    println!("\n--------------------");
+    println!("----- SOLUTION -----");
+    println!("--------------------\n");
+
+    println!(
+        "DEBUG - SOL - target_parent_hsm_hw_component_count_hashmap: {:?}",
+        target_parent_hsm_hw_component_count_hashmap
+    );
+
+    print_table_f32_score(
+        &user_defined_hw_component_vec,
+        &target_parent_hsm_node_hw_component_count_vec,
+    );
 
     let target_hsm_hw_component_count_hashmap =
         calculate_hsm_hw_component_count(&hw_component_counters_to_move_out_from_parent_hsm);
@@ -747,19 +773,14 @@ pub async fn exec(
         target_hsm_hw_component_count_hashmap
     );
 
-    println!(
-        "DEBUG - SOL - hw_component_counters_to_move_out_from_parent_hsm:{:?}",
-        hw_component_counters_to_move_out_from_parent_hsm
+    print_table_f32_score(
+        &user_defined_hw_component_vec,
+        &hsm_target_node_hw_component_count_vec,
     );
 
     println!(
-        "DEBUG - SOL - target_parent_hsm_hw_component_count_hashmap: {:?}",
-        target_parent_hsm_hw_component_count_hashmap
-    );
-
-    println!(
-        "DEBUG - SOL - target_parent_hsm_node_hw_component_count_vec: {:?}",
-        target_parent_hsm_node_hw_component_count_vec
+        "DEBUG - SOL - user_defined_hw_component_count_hashmap: {:?}",
+        user_defined_hw_component_count_hashmap
     );
 
     // *********************************************************************************************************
@@ -2174,7 +2195,7 @@ pub mod utils {
                     let counter = node_pattern_hashmap.get(hw_component).unwrap();
                     row.push(
                         comfy_table::Cell::new(format!("⚠️ ({})", counter)) // NOTE: emojis
-                        // can also be printed using unicode like \u{26A0}
+                            // can also be printed using unicode like \u{26A0}
                             .fg(Color::Yellow)
                             .set_alignment(comfy_table::CellAlignment::Center),
                     );
