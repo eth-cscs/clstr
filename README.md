@@ -1,8 +1,13 @@
+# ⚠️  ⚠️  ⚠️  WIP all this is subject to change ⚠️  ⚠️  ⚠️ 
+
 # CLSTR
 
 cli based to manage HSM groups.
 
-## Run
+# Introduction
+
+
+## Examples
 
 Get hardware inventory for hsm group zinal
 
@@ -45,11 +50,24 @@ $ clstr get hsm artifacts zinal
 +---------------+-----------+-----------+---------------------------------+---------------------------------+---------------------------------+---------------------------------+--------+-----------------------+------------------------------------+
 ```
 
-Get xnames for a hsm group called zinal which should have minimum:
+Upscale or downscale a pool or resources
+
+We need 2 pool of resources (target and parent) for clstr to work, we correlated a pool of resources with a CSM group. Clstr then will move all resources in target to parent, then allocate as much resources as the user expect back to the target hsm group.
+
+Based on the example above, we now want to downscale the HSM group zinal to:
+
  - x4 A100 Nvidia gpus
  - x30 epyc AMD cpus
  - x2 instinct AMD gpus
  - 16GBx80 of RAM
+
+Clstr cluster pattern tries to simplify the way to describe hw components in a cluster, the format is as follows: 
+
+> <cluster name>:<hw component>:<quantity>(:<hw component>:<quantity>)*
+
+The `<hw component>` is a string which clst is going to look for across all the hw components in either the target or parent HSM group, if works as a very simplified fuzzy finder.
+
+Note: cluster pattern does not reflect compute nodes but the overall number of hw components you want in your cluster, this is important because a node with `NVIDIA_A100-SXM4-80GB` has 4 of them thefore if the user specifies `a100:2`, he/she will get 4 because it is the minimum a node can provide.
 
 ```
 $ clstr apply hsm -p zinal:nvidia:2:mi200:4:7742:6:memory:80 
