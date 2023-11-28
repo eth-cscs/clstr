@@ -2,14 +2,15 @@
 
 # CLSTR
 
-cli based to manage HSM groups.
+Cli based to manage HSM groups. The integration with CSM is provided by [mesa](https://github.com/eth-cscs/mesa)
 
 # Introduction
 
+Clstr works around the concept of resurce pools which is a group of hardware components that can be allocated to a tenant, workload, etc. A resource pool can be also called a cluster or a HSM group.
 
 ## Examples
 
-Get hardware inventory for hsm group zinal
+### Get hardware inventory for hsm group zinal
 
 ```
 $ clstr get hsm artifacts zinal
@@ -50,7 +51,54 @@ $ clstr get hsm artifacts zinal
 +---------------+-----------+-----------+---------------------------------+---------------------------------+---------------------------------+---------------------------------+--------+-----------------------+------------------------------------+
 ```
 
-Upscale or downscale a pool or resources
+### Get hardware resources of a node
+
+```
+$ clstr get nodes artifacts`` x1001c1s6b0n0 zinal
++---------------+------------------+----------------+------------------------------------+
+| Node XName    | Component XName  | Component Type | Component Info                     |
++========================================================================================+
+| x1001c1s6b0n0 | x1001c1s6b0n0p0  | Processor      | AMD EPYC 7742 64-Core Processor    |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0p1  | Processor      | AMD EPYC 7742 64-Core Processor    |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d11 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d5  | Memory         | *** Missing info                   |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d7  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d2  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d0  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d12 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d8  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d14 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d15 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d1  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d3  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d13 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d9  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d6  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d10 | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0d4  | Memory         | 16384 MiB                          |
+|---------------+------------------+----------------+------------------------------------|
+| x1001c1s6b0n0 | x1001c1s6b0n0h0  | NodeHsnNic     | SS11 200Gb 2P NIC Mezz REV02 (HSN) |
++---------------+------------------+----------------+------------------------------------+
+```
+
+### Upscale or downscale a pool or resources
 
 We need 2 pool of resources (target and parent) for clstr to work, we correlated a pool of resources with a CSM group. Clstr then will move all resources in target to parent, then allocate as much resources as the user expect back to the target hsm group.
 
@@ -63,7 +111,7 @@ Based on the example above, we now want to downscale the HSM group zinal to:
 
 Clstr cluster pattern tries to simplify the way to describe hw components in a cluster, the format is as follows: 
 
-> <cluster name>:<hw component>:<quantity>(:<hw component>:<quantity>)*
+> `cluster name`:`hw component`:`quantity`(:`hw component`:`quantity`)*
 
 The `<hw component>` is a string which clst is going to look for across all the hw components in either the target or parent HSM group, if works as a very simplified fuzzy finder.
 
