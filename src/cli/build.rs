@@ -31,7 +31,7 @@ pub fn subcommand_get_artifacts_node(hsm_group: Option<&String>) -> Command {
         )
 }
 
-pub fn subcommand_get_artifacts_hsm_group(hsm_group: Option<&String>) -> Command {
+pub fn subcommand_get_hsm_group(hsm_group: Option<&String>) -> Command {
     let mut artifact_subcommand = Command::new("artifacts").aliases(["a", "art"]).about("Get HSM group's artifacts").arg(arg!(-o --output <FORMAT> "Output format. If missing it will print output data in human redeable (tabular) format").value_parser(["json"]));
 
     match hsm_group {
@@ -45,10 +45,24 @@ pub fn subcommand_get_artifacts_hsm_group(hsm_group: Option<&String>) -> Command
         }
     }
 
+    let mut pattern_subcommand = Command::new("pattern").aliases(["p", "pat", "ptrn", "pttrn"]).about("Get HSM group's hw configuration pattern");
+
+    match hsm_group {
+        None => {
+            pattern_subcommand = pattern_subcommand
+                .arg_required_else_help(true)
+                .arg(arg!(<HSM_GROUP_NAME> "hsm group name"))
+        }
+        Some(_) => {
+            pattern_subcommand = pattern_subcommand.arg_required_else_help(false);
+        }
+    }
+
     Command::new("hsm-groups")
         .aliases(["h", "hg", "hsm", "hsmgrops"])
         .about("Get HSM group's artifacts")
         .subcommand(artifact_subcommand)
+        .subcommand(pattern_subcommand)
 }
 
 pub fn subcommand_apply_hsm() -> Command {
@@ -68,7 +82,7 @@ pub fn build_cli(hsm_group: Option<&String>) -> Command {
                 .arg_required_else_help(true)
                 .about("Get cluster details")
                 .subcommand(subcommand_get_artifacts_node(hsm_group))
-                .subcommand(subcommand_get_artifacts_hsm_group(hsm_group)),
+                .subcommand(subcommand_get_hsm_group(hsm_group)),
         )
         .subcommand(
             Command::new("apply")

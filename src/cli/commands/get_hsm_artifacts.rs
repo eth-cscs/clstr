@@ -97,6 +97,12 @@ pub async fn exec(
 
     let duration = start_total.elapsed();
 
+    log::info!(
+        "Time elapsed in http calls to get hw inventory for HSM '{}' is: {:?}",
+        hsm_group_name,
+        duration
+    );
+
     if output_opt.is_some() && output_opt.unwrap().eq("json") {
         for node_summary in &hsm_summary {
             println!("{}", serde_json::to_string_pretty(&node_summary).unwrap());
@@ -104,12 +110,6 @@ pub async fn exec(
     } else {
         print_table(&hsm_summary);
     }
-
-    log::info!(
-        "Time elapsed in http calls to get hw inventory for HSM '{}' is: {:?}",
-        hsm_group_name,
-        duration
-    );
 }
 
 pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {

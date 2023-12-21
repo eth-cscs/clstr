@@ -1,7 +1,7 @@
 use clap::ArgMatches;
 
 use super::commands::{
-    apply_hsm_based_on_component_quantity, get_hsm_artifacts, get_nodes_artifacts,
+    apply_hsm_based_on_component_quantity, get_hsm_artifacts, get_nodes_artifacts, get_hsm_pattern,
 };
 
 pub async fn process_cli(
@@ -46,6 +46,22 @@ pub async fn process_cli(
                     shasta_root_cert,
                     hsm_group_name,
                     cli_get_hsm_groups_artifacts.get_one::<String>("output"),
+                )
+                .await;
+            } else if let Some(cli_get_hsm_groups_pattern) =
+                cli_get_hsm_groups.subcommand_matches("pattern")
+            {
+                let hsm_group_name = match hsm_group {
+                    None => cli_get_hsm_groups_pattern
+                        .get_one::<String>("HSM_GROUP_NAME")
+                        .unwrap(),
+                    Some(hsm_group_name_value) => hsm_group_name_value,
+                };
+                get_hsm_pattern::exec(
+                    shasta_token,
+                    shasta_base_url,
+                    shasta_root_cert,
+                    hsm_group_name,
                 )
                 .await;
             }
