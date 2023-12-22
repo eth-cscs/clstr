@@ -1,16 +1,13 @@
 use std::{
-    cell::Cell,
     collections::{HashMap, HashSet},
-    ops::Deref,
     sync::Arc,
     time::Instant,
 };
 
-use comfy_table::{Color, Table};
-use mesa::shasta::hsm;
+use comfy_table::Color;
 use tokio::sync::Semaphore;
 
-use crate::cli::commands::get_nodes_artifacts::{self, NodeSummary};
+use crate::cli::commands::get_nodes_artifacts::NodeSummary;
 
 pub async fn exec(
     shasta_token: &str,
@@ -20,7 +17,7 @@ pub async fn exec(
     output_opt: Option<&String>,
 ) {
     // Target HSM group
-    let hsm_group_value = hsm::http_client::get_hsm_group(
+    let hsm_group_value = mesa::hsm::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -37,7 +34,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
 
     let mut hsm_summary = Vec::new();
 
@@ -74,7 +71,7 @@ pub async fn exec(
         log::info!("Getting HW inventory details for node '{}'", hsm_member);
         tasks.spawn(async move {
             let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
-            hsm::http_client::get_hw_inventory(
+            mesa::hsm::http_client::get_hw_inventory(
                 &shasta_token_string,
                 &shasta_base_url_string,
                 &shasta_root_cert_vec,
@@ -211,10 +208,7 @@ pub fn print_table(node_summary_vec: &Vec<NodeSummary>) {
 
     hsm_node_hw_component_count_hashmap_vec.sort_by(|a, b| a.0.cmp(&b.0));
 
-    print_table_f32_score(
-        &headers,
-        &hsm_node_hw_component_count_hashmap_vec,
-    );
+    print_table_f32_score(&headers, &hsm_node_hw_component_count_hashmap_vec);
 }
 
 pub fn calculate_hsm_total_number_hw_components(

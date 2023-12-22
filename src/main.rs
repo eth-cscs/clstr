@@ -1,12 +1,9 @@
 mod cli;
 mod common;
 
-use mesa::shasta;
 use std::path::PathBuf;
 
 use directories::ProjectDirs;
-
-use shasta::authentication;
 
 use crate::common::log_ops;
 
@@ -86,9 +83,12 @@ async fn main() -> core::result::Result<(), Box<dyn std::error::Error>> {
 
     let shasta_root_cert = common::config_ops::get_csm_root_cert_content(&site_name);
 
-    let shasta_token =
-        authentication::get_api_token(&shasta_base_url, &shasta_root_cert, &keycloak_base_url)
-            .await?;
+    let shasta_token = mesa::common::authentication::get_api_token(
+        &shasta_base_url,
+        &shasta_root_cert,
+        &keycloak_base_url,
+    )
+    .await?;
 
     // Process input params
     let matches = crate::cli::build::build_cli(settings_hsm_group_opt.as_ref()).get_matches();

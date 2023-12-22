@@ -2,20 +2,16 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::Semaphore;
 
-use crate::{
-    cli::commands::{
-        apply_hsm_based_on_component_quantity::utils::{
-            calculate_all_deltas, calculate_hsm_hw_component_count,
-            calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec,
-            calculate_hsm_hw_component_normalized_node_density_score_downscale,
-            calculate_hsm_total_number_hw_components, calculate_lcm, calculate_node_density_score,
-            downscale_node_migration, get_hsm_hw_component_count_filtered_by_user_request,
-            get_node_hw_component_count, upscale_node_migration,
-        },
-        get_hsm_artifacts::print_table_f32_score,
+use crate::cli::commands::{
+    apply_hsm_based_on_component_quantity::utils::{
+        calculate_all_deltas, calculate_hsm_hw_component_count,
+        calculate_hsm_hw_component_normalized_density_score_from_hsm_node_hw_component_count_vec,
+        calculate_hsm_hw_component_normalized_node_density_score_downscale,
+        calculate_hsm_total_number_hw_components, calculate_node_density_score,
+        get_hsm_hw_component_count_filtered_by_user_request, get_node_hw_component_count,
+        upscale_node_migration,
     },
-    common,
-    shasta::hsm,
+    get_hsm_artifacts::print_table_f32_score,
 };
 
 // TEST --> cargo run -- a hsm -p zinal:a100:4:epyc:30:instinct:2
@@ -111,7 +107,7 @@ pub async fn exec(
     // PREPREQUISITES TARGET HSM GROUP
 
     // Get target HSM group details
-    let hsm_group_target_value = hsm::http_client::get_hsm_group(
+    let hsm_group_target_value = mesa::hsm::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -140,7 +136,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_target_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_target_value);
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -281,7 +277,7 @@ pub async fn exec(
     // PREREQUISITES PARENT HSM GROUP
 
     // Get parent HSM group details
-    let hsm_group_parent_value = hsm::http_client::get_hsm_group(
+    let hsm_group_parent_value = mesa::hsm::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -292,7 +288,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_parent_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -851,12 +847,10 @@ pub async fn exec(
 }
 
 pub mod utils {
-    use std::{collections::HashMap, ops::Deref};
+    use std::collections::HashMap;
 
     use comfy_table::Color;
     use serde_json::Value;
-
-    use crate::shasta::hsm;
 
     /// Removes as much nodes as it can from the parent HSM group
     /// Returns a tuple with 2 vecs, the left one is the new parent HSM group while the left one is
@@ -1844,7 +1838,7 @@ pub mod utils {
         hsm_member: &str,
         user_defined_hw_profile_vec: Vec<String>,
     ) -> (String, Vec<String>, Vec<u64>) {
-        let node_hw_inventory_value = hsm::http_client::get_hw_inventory(
+        let node_hw_inventory_value = mesa::hsm::http_client::get_hw_inventory(
             &shasta_token,
             &shasta_base_url,
             &shasta_root_cert,
@@ -1960,13 +1954,15 @@ pub mod utils {
         node_hw_inventory_value: &Value,
         hw_component_pattern_list: Vec<String>,
     ) -> (Vec<String>, Vec<u64>) {
-        let processor_vec =
-            hsm::utils::get_list_processor_model_from_hw_inventory_value(node_hw_inventory_value)
-                .unwrap_or_default();
+        let processor_vec = mesa::hsm::utils::get_list_processor_model_from_hw_inventory_value(
+            node_hw_inventory_value,
+        )
+        .unwrap_or_default();
 
-        let accelerator_vec =
-            hsm::utils::get_list_accelerator_model_from_hw_inventory_value(node_hw_inventory_value)
-                .unwrap_or_default();
+        let accelerator_vec = mesa::hsm::utils::get_list_accelerator_model_from_hw_inventory_value(
+            node_hw_inventory_value,
+        )
+        .unwrap_or_default();
 
         /* let hsn_nic_vec =
         hsm::utils::get_list_hsn_nics_model_from_hw_inventory_value(node_hw_inventory_value)
@@ -2005,9 +2001,10 @@ pub mod utils {
             }
         }
 
-        let memory_vec =
-            hsm::utils::get_list_memory_capacity_from_hw_inventory_value(node_hw_inventory_value)
-                .unwrap_or_default();
+        let memory_vec = mesa::hsm::utils::get_list_memory_capacity_from_hw_inventory_value(
+            node_hw_inventory_value,
+        )
+        .unwrap_or_default();
 
         (node_hw_component_pattern_vec, memory_vec)
     }
@@ -2291,7 +2288,7 @@ pub async fn test_memory_capacity() {
         &path_to_manta_configuration_file.to_string_lossy()
     );
 
-    let settings = common::config_ops::get_configuration();
+    let settings = crate::common::config_ops::get_configuration();
 
     let site_name = settings.get_string("site").unwrap();
     let site_detail_hashmap = settings.get_table("sites").unwrap();
@@ -2316,9 +2313,9 @@ pub async fn test_memory_capacity() {
         std::env::set_var("SOCKS5", socks_proxy.to_string());
     }
 
-    let shasta_root_cert = common::config_ops::get_csm_root_cert_content(&site_name);
+    let shasta_root_cert = crate::common::config_ops::get_csm_root_cert_content(&site_name);
 
-    let shasta_token = mesa::shasta::authentication::get_api_token(
+    let shasta_token = mesa::common::authentication::get_api_token(
         &shasta_base_url,
         &shasta_root_cert,
         &keycloak_base_url,
@@ -2326,10 +2323,13 @@ pub async fn test_memory_capacity() {
     .await
     .unwrap();
 
-    let hsm_group_vec =
-        hsm::http_client::get_all_hsm_groups(&shasta_token, &shasta_base_url, &shasta_root_cert)
-            .await
-            .unwrap();
+    let hsm_group_vec = mesa::hsm::http_client::get_all_hsm_groups(
+        &shasta_token,
+        &shasta_base_url,
+        &shasta_root_cert,
+    )
+    .await
+    .unwrap();
     /* let hsm_group_vec = hsm::http_client::get_hsm_group_vec(
         &shasta_token,
         &shasta_base_url,
@@ -2397,7 +2397,7 @@ pub async fn test_memory_capacity() {
     let mut hsm_memory_capacity_lcm = u64::MAX;
 
     for (node, hsm_groups_hw_inventory) in node_hsm_groups_hw_inventory_map {
-        let node_memory_capacity_lcm = calculate_lcm(&hsm_groups_hw_inventory.2);
+        let node_memory_capacity_lcm = utils::calculate_lcm(&hsm_groups_hw_inventory.2);
         if node_memory_capacity_lcm < hsm_memory_capacity_lcm {
             hsm_memory_capacity_lcm = node_memory_capacity_lcm;
         }

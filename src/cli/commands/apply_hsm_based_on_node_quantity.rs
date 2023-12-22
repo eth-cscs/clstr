@@ -2,9 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use tokio::sync::Semaphore;
 
-use crate::{
-    cli::commands::apply_hsm_based_on_node_quantity::utils::hsm_node_hw_profile, shasta::hsm,
-};
+use crate::cli::commands::apply_hsm_based_on_node_quantity::utils::hsm_node_hw_profile;
 
 // TEST --> a hsm -p zinal:a100:epyc:a100:2:epyc:instinct:8:epyc:5
 //
@@ -290,7 +288,7 @@ pub async fn exec(
     .sort_by(|a, b| b.len().cmp(&a.len())); */
 
     // Target HSM group
-    let target_hsm_group_value = hsm::http_client::get_hsm_group(
+    let target_hsm_group_value = mesa::hsm::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -300,7 +298,7 @@ pub async fn exec(
     .unwrap();
 
     let hsm_group_parent_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
 
     let start = Instant::now();
 
@@ -460,7 +458,7 @@ pub async fn exec(
     } */
 
     // Free node HSM group
-    let hsm_group_parent_value = hsm::http_client::get_hsm_group(
+    let hsm_group_parent_value = mesa::hsm::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -470,7 +468,7 @@ pub async fn exec(
     .unwrap();
 
     let hsm_group_parent_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
 
     let start = Instant::now();
 
@@ -550,7 +548,7 @@ pub async fn exec(
     let mut nodes_to_remove_from_target_hsm_group;
     let mut nodes_to_add_to_target_hsm_group;
     let mut target_hsm_group_members =
-        hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&target_hsm_group_value);
     let mut parent_hsm_group_members = hsm_group_parent_members.clone();
 
     let hs_profile_total_counters = target_hsm_hw_pattern_summary.get_hw_profile_total_counters();
@@ -649,8 +647,6 @@ pub mod utils {
 
     use serde_json::Value;
 
-    use crate::shasta::hsm;
-
     pub async fn hsm_node_hw_profile(
         shasta_token: String,
         shasta_base_url: String,
@@ -658,7 +654,7 @@ pub mod utils {
         hsm_member: &str,
         user_defined_hw_profile_vec: Vec<Vec<String>>,
     ) -> (String, Option<Vec<String>>) {
-        let profile = hsm::http_client::get_hw_inventory(
+        let profile = mesa::hsm::http_client::get_hw_inventory(
             &shasta_token,
             &shasta_base_url,
             shasta_root_cert,

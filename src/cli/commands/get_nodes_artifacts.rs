@@ -1,5 +1,4 @@
 use comfy_table::{Cell, Table};
-use mesa::shasta::hsm;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -138,7 +137,7 @@ pub async fn exec(
     type_artifact_opt: Option<&String>,
     output_opt: Option<&String>,
 ) {
-    let hsm_groups_resp = hsm::http_client::get_hsm_group_vec(
+    let hsm_groups_resp = mesa::hsm::http_client::get_hsm_group_vec(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -165,14 +164,14 @@ pub async fn exec(
 
     // Take all nodes for all hsm_groups found and put them in a Vec
     let mut hsm_groups_node_list: Vec<String> =
-        hsm::utils::get_member_vec_from_hsm_group_value_vec(&hsm_group_list)
+        mesa::hsm::utils::get_member_vec_from_hsm_group_value_vec(&hsm_group_list)
             .into_iter()
             .collect();
 
     hsm_groups_node_list.sort();
 
     let mut node_hw_inventory =
-        &hsm::http_client::get_hw_inventory(shasta_token, shasta_base_url, shasta_root_cert, xname)
+        &mesa::hsm::http_client::get_hw_inventory(shasta_token, shasta_base_url, shasta_root_cert, xname)
             .await
             .unwrap();
 
