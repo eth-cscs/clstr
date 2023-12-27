@@ -137,7 +137,7 @@ pub async fn exec(
     type_artifact_opt: Option<&String>,
     output_opt: Option<&String>,
 ) {
-    let hsm_groups_resp = mesa::hsm::http_client::get_hsm_group_vec(
+    let hsm_groups_resp = mesa::hsm::group::shasta::http_client::get_hsm_group_vec(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -164,16 +164,20 @@ pub async fn exec(
 
     // Take all nodes for all hsm_groups found and put them in a Vec
     let mut hsm_groups_node_list: Vec<String> =
-        mesa::hsm::utils::get_member_vec_from_hsm_group_value_vec(&hsm_group_list)
+        mesa::hsm::group::shasta::utils::get_member_vec_from_hsm_group_value_vec(&hsm_group_list)
             .into_iter()
             .collect();
 
     hsm_groups_node_list.sort();
 
-    let mut node_hw_inventory =
-        &mesa::hsm::http_client::get_hw_inventory(shasta_token, shasta_base_url, shasta_root_cert, xname)
-            .await
-            .unwrap();
+    let mut node_hw_inventory = &mesa::hsm::hw_inventory::shasta::http_client::get_hw_inventory(
+        shasta_token,
+        shasta_base_url,
+        shasta_root_cert,
+        xname,
+    )
+    .await
+    .unwrap();
 
     node_hw_inventory = node_hw_inventory.pointer("/Nodes/0").unwrap();
 

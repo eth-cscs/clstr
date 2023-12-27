@@ -107,7 +107,7 @@ pub async fn exec(
     // PREPREQUISITES TARGET HSM GROUP
 
     // Get target HSM group details
-    let hsm_group_target_value = mesa::hsm::http_client::get_hsm_group(
+    let hsm_group_target_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -136,7 +136,9 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_target_value);
+        mesa::hsm::group::shasta::utils::get_member_vec_from_hsm_group_value(
+            &hsm_group_target_value,
+        );
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -277,7 +279,7 @@ pub async fn exec(
     // PREREQUISITES PARENT HSM GROUP
 
     // Get parent HSM group details
-    let hsm_group_parent_value = mesa::hsm::http_client::get_hsm_group(
+    let hsm_group_parent_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -288,7 +290,9 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_parent_members =
-        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_parent_value);
+        mesa::hsm::group::shasta::utils::get_member_vec_from_hsm_group_value(
+            &hsm_group_parent_value,
+        );
 
     // Get HSM group members hw configurfation based on user input
     let start = Instant::now();
@@ -1838,14 +1842,15 @@ pub mod utils {
         hsm_member: &str,
         user_defined_hw_profile_vec: Vec<String>,
     ) -> (String, Vec<String>, Vec<u64>) {
-        let node_hw_inventory_value = mesa::hsm::http_client::get_hw_inventory(
-            &shasta_token,
-            &shasta_base_url,
-            &shasta_root_cert,
-            hsm_member,
-        )
-        .await
-        .unwrap();
+        let node_hw_inventory_value =
+            mesa::hsm::hw_inventory::shasta::http_client::get_hw_inventory(
+                &shasta_token,
+                &shasta_base_url,
+                &shasta_root_cert,
+                hsm_member,
+            )
+            .await
+            .unwrap();
 
         let node_hw_profile = get_node_hw_properties_from_value(
             &node_hw_inventory_value,
@@ -1954,12 +1959,12 @@ pub mod utils {
         node_hw_inventory_value: &Value,
         hw_component_pattern_list: Vec<String>,
     ) -> (Vec<String>, Vec<u64>) {
-        let processor_vec = mesa::hsm::utils::get_list_processor_model_from_hw_inventory_value(
+        let processor_vec = mesa::hsm::hw_inventory::shasta::utils::get_list_processor_model_from_hw_inventory_value(
             node_hw_inventory_value,
         )
         .unwrap_or_default();
 
-        let accelerator_vec = mesa::hsm::utils::get_list_accelerator_model_from_hw_inventory_value(
+        let accelerator_vec = mesa::hsm::hw_inventory::shasta::utils::get_list_accelerator_model_from_hw_inventory_value(
             node_hw_inventory_value,
         )
         .unwrap_or_default();
@@ -2001,7 +2006,7 @@ pub mod utils {
             }
         }
 
-        let memory_vec = mesa::hsm::utils::get_list_memory_capacity_from_hw_inventory_value(
+        let memory_vec = mesa::hsm::hw_inventory::shasta::utils::get_list_memory_capacity_from_hw_inventory_value(
             node_hw_inventory_value,
         )
         .unwrap_or_default();
@@ -2323,7 +2328,7 @@ pub async fn test_memory_capacity() {
     .await
     .unwrap();
 
-    let hsm_group_vec = mesa::hsm::http_client::get_all_hsm_groups(
+    let hsm_group_vec = mesa::hsm::group::shasta::http_client::get_all_hsm_groups(
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,

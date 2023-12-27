@@ -17,7 +17,7 @@ pub async fn exec(
     output_opt: Option<&String>,
 ) {
     // Target HSM group
-    let hsm_group_value = mesa::hsm::http_client::get_hsm_group(
+    let hsm_group_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
@@ -34,7 +34,7 @@ pub async fn exec(
 
     // Get target HSM group members
     let hsm_group_target_members =
-        mesa::hsm::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
+        mesa::hsm::group::shasta::utils::get_member_vec_from_hsm_group_value(&hsm_group_value);
 
     let mut hsm_summary = Vec::new();
 
@@ -71,7 +71,7 @@ pub async fn exec(
         log::info!("Getting HW inventory details for node '{}'", hsm_member);
         tasks.spawn(async move {
             let _permit = permit; // Wait semaphore to allow new tasks https://github.com/tokio-rs/tokio/discussions/2648#discussioncomment-34885
-            mesa::hsm::http_client::get_hw_inventory(
+            mesa::hsm::hw_inventory::shasta::http_client::get_hw_inventory(
                 &shasta_token_string,
                 &shasta_base_url_string,
                 &shasta_root_cert_vec,
