@@ -1,4 +1,4 @@
-use serde_json::json;
+use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc, time::Instant};
 use tokio::sync::Semaphore;
 
@@ -107,20 +107,23 @@ pub async fn exec(
     // PREPREQUISITES TARGET HSM GROUP
 
     // Get target HSM group details
-    let hsm_group_target_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
+    let hsm_group_target_value: Value = mesa::hsm::group::shasta::http_client::get(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
-        target_hsm_group_name,
+        Some(&target_hsm_group_name.to_string()),
     )
     .await
-    .unwrap_or(json!({
+    .unwrap()
+    .first()
+    .unwrap_or(&json!({
         "label": target_hsm_group_name,
         "description": "",
         "members": {
             "ids": []
         }
-    }));
+    }))
+    .clone();
 
     /* // If target HSM does not exists, then create a new one
     let hsm_group_target_value = match hsm_group_target_value_rslt {
@@ -279,14 +282,17 @@ pub async fn exec(
     // PREREQUISITES PARENT HSM GROUP
 
     // Get parent HSM group details
-    let hsm_group_parent_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
+    let hsm_group_parent_value = mesa::hsm::group::shasta::http_client::get(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
-        parent_hsm_group_name,
+        Some(&parent_hsm_group_name.to_string()),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .first()
+    .unwrap()
+    .clone();
 
     // Get target HSM group members
     let hsm_group_parent_members =
@@ -2328,7 +2334,7 @@ pub async fn test_memory_capacity() {
     .await
     .unwrap();
 
-    let hsm_group_vec = mesa::hsm::group::shasta::http_client::get_all_hsm_groups(
+    let hsm_group_vec = mesa::hsm::group::shasta::http_client::get_all(
         &shasta_token,
         &shasta_base_url,
         &shasta_root_cert,

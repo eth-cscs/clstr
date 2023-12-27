@@ -11,14 +11,17 @@ pub async fn exec(
     hsm_group_name: &str,
 ) {
     // Target HSM group
-    let hsm_group_value = mesa::hsm::group::shasta::http_client::get_hsm_group(
+    let hsm_group_value = mesa::hsm::group::shasta::http_client::get(
         shasta_token,
         shasta_base_url,
         shasta_root_cert,
-        hsm_group_name,
+        Some(&hsm_group_name.to_string()),
     )
     .await
-    .unwrap();
+    .unwrap()
+    .first()
+    .unwrap()
+    .clone();
 
     log::info!(
         "Get HW artifacts for nodes in HSM group '{:?}' and members {:?}",
