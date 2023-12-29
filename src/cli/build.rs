@@ -5,20 +5,17 @@ use strum::IntoEnumIterator;
 use super::commands::get_nodes_artifacts;
 
 pub fn subcommand_get_artifacts_node(hsm_group: Option<&String>) -> Command {
-
-    let mut artifact_subcommand = 
-            Command::new("artifacts")
+    let mut artifact_subcommand = Command::new("artifacts")
                 .aliases(["a", "art"])
                 .about("Get node's artifacts")
                 .arg_required_else_help(true)
                 .arg(arg!(<XNAME> "xname").required(true))
                 .arg(arg!(-t --type <TYPE> "Filters output to specific type").value_parser(get_nodes_artifacts::ArtifactType::iter().map(|e| e.into()).collect::<Vec<&str>>()))
-                .arg(arg!(-o --output <FORMAT> "Output format. If missing it will print output data in human redeable (tabular) format").value_parser(["json"]))
-                ;
+                .arg(arg!(-o --output <FORMAT> "Output format. If missing it will print output data in human redeable (tabular) format").value_parser(["json"]));
 
     match hsm_group {
         None => {
-            artifact_subcommand  = artifact_subcommand.arg(arg!(<HSM_GROUP_NAME> "hsm group name"))
+            artifact_subcommand = artifact_subcommand.arg(arg!(<HSM_GROUP_NAME> "hsm group name"))
         }
         Some(_) => {}
     }
@@ -26,9 +23,7 @@ pub fn subcommand_get_artifacts_node(hsm_group: Option<&String>) -> Command {
     Command::new("nodes")
         .aliases(["n", "node", "nd"])
         .about("Get node's artifacts")
-        .subcommand(
-            artifact_subcommand
-        )
+        .subcommand(artifact_subcommand)
 }
 
 pub fn subcommand_get_hsm_group(hsm_group: Option<&String>) -> Command {
@@ -41,11 +36,13 @@ pub fn subcommand_get_hsm_group(hsm_group: Option<&String>) -> Command {
                 .arg(arg!(<HSM_GROUP_NAME> "hsm group name"))
         }
         Some(_) => {
-             artifact_subcommand = artifact_subcommand.arg_required_else_help(false);
+            artifact_subcommand = artifact_subcommand.arg_required_else_help(false);
         }
     }
 
-    let mut pattern_subcommand = Command::new("pattern").aliases(["p", "pat", "ptrn", "pttrn"]).about("Get HSM group's hw configuration pattern");
+    let mut pattern_subcommand = Command::new("pattern")
+        .aliases(["p", "pat", "ptrn", "pttrn"])
+        .about("Get HSM group's hw configuration pattern");
 
     match hsm_group {
         None => {
@@ -90,6 +87,6 @@ pub fn build_cli(hsm_group: Option<&String>) -> Command {
                 .arg_required_else_help(true)
                 .about("Create new cluster")
                 // .subcommand(subcommand_apply_cluster(/* hsm_group */))
-                .subcommand(subcommand_apply_hsm(/* hsm_group */))
+                .subcommand(subcommand_apply_hsm(/* hsm_group */)),
         )
 }
